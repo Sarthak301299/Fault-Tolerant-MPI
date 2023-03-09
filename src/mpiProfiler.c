@@ -46,7 +46,56 @@ void *__wrap_malloc(size_t size) {
 	return ptr;
 }
 #endif
+/*
+struct mpi_ft_datatype{
+  OMPI_Datatype odatatype;
+  EMPI_Datatype edatatype;
+  int size;
+};
 
+struct mpi_ft_comm{
+  OMPI_Comm oworldComm;
+  OMPI_Comm OMPI_COMM_CMP;
+  OMPI_Comm OMPI_COMM_REP;
+  OMPI_Comm OMPI_CMP_REP_INTERCOMM;
+	OMPI_Comm OMPI_CMP_NO_REP;
+	OMPI_Comm OMPI_CMP_NO_REP_INTERCOMM;
+  EMPI_Comm eworldComm;
+  EMPI_Comm EMPI_COMM_CMP;
+  EMPI_Comm EMPI_COMM_REP;
+  EMPI_Comm EMPI_CMP_REP_INTERCOMM;
+	EMPI_Comm EMPI_CMP_NO_REP;
+	EMPI_Comm EMPI_CMP_NO_REP_INTERCOMM;
+};
+
+struct mpi_ft_op{
+  OMPI_Op oop;
+  EMPI_Op eop;
+  //void *func;
+};
+
+struct mpi_ft_status{
+	EMPI_Status status;
+	int count;
+	//int count_lo;
+	//int count_hi_and_cancelled;
+	int MPI_SOURCE;
+	int MPI_TAG;
+	int MPI_ERROR;
+};
+
+struct mpi_ft_request{
+	EMPI_Request *reqcmp;
+	EMPI_Request *reqrep;
+	bool complete;
+	MPI_Comm comm;
+	MPI_Status status;
+	int type;
+	int backup;
+	int *backuploc;
+	void *storeloc;
+};
+*/
 void *extLib = NULL;
 void *openLib = NULL;
 
@@ -71,6 +120,57 @@ struct mpi_ft_datatype mpi_ft_datatype_double;
 struct mpi_ft_datatype mpi_ft_datatype_long_double;
 struct mpi_ft_datatype mpi_ft_datatype_long_long_int;
 struct mpi_ft_datatype mpi_ft_datatype_unsigned_long_long;
+
+struct mpi_ft_datatype mpi_ft_datatype_packed;
+//struct mpi_ft_datatype mpi_ft_datatype_lb;
+//struct mpi_ft_datatype mpi_ft_datatype_ub;
+struct mpi_ft_datatype mpi_ft_datatype_float_int;
+struct mpi_ft_datatype mpi_ft_datatype_double_int;
+struct mpi_ft_datatype mpi_ft_datatype_long_int;
+struct mpi_ft_datatype mpi_ft_datatype_short_int;
+struct mpi_ft_datatype mpi_ft_datatype_2int;
+struct mpi_ft_datatype mpi_ft_datatype_long_double_int;
+struct mpi_ft_datatype mpi_ft_datatype_complex;
+struct mpi_ft_datatype mpi_ft_datatype_double_complex;
+struct mpi_ft_datatype mpi_ft_datatype_logical;
+struct mpi_ft_datatype mpi_ft_datatype_real;
+struct mpi_ft_datatype mpi_ft_datatype_double_precision;
+struct mpi_ft_datatype mpi_ft_datatype_integer;
+struct mpi_ft_datatype mpi_ft_datatype_2integer;
+struct mpi_ft_datatype mpi_ft_datatype_2real;
+struct mpi_ft_datatype mpi_ft_datatype_2double_precision;
+struct mpi_ft_datatype mpi_ft_datatype_character;
+//struct mpi_ft_datatype mpi_ft_datatype_real4;
+//struct mpi_ft_datatype mpi_ft_datatype_real8;
+//struct mpi_ft_datatype mpi_ft_datatype_real16;
+//struct mpi_ft_datatype mpi_ft_datatype_complex8;
+//struct mpi_ft_datatype mpi_ft_datatype_complex16;
+//struct mpi_ft_datatype mpi_ft_datatype_complex32;
+//struct mpi_ft_datatype mpi_ft_datatype_integer1;
+//struct mpi_ft_datatype mpi_ft_datatype_integer2;
+//struct mpi_ft_datatype mpi_ft_datatype_integer4;
+//struct mpi_ft_datatype mpi_ft_datatype_integer8;
+//struct mpi_ft_datatype mpi_ft_datatype_integer16;
+struct mpi_ft_datatype mpi_ft_datatype_int8_t;
+struct mpi_ft_datatype mpi_ft_datatype_int16_t;
+struct mpi_ft_datatype mpi_ft_datatype_int32_t;
+struct mpi_ft_datatype mpi_ft_datatype_int64_t;
+struct mpi_ft_datatype mpi_ft_datatype_uint8_t;
+struct mpi_ft_datatype mpi_ft_datatype_uint16_t;
+struct mpi_ft_datatype mpi_ft_datatype_uint32_t;
+struct mpi_ft_datatype mpi_ft_datatype_uint64_t;
+struct mpi_ft_datatype mpi_ft_datatype_c_bool;
+struct mpi_ft_datatype mpi_ft_datatype_c_float_complex;
+struct mpi_ft_datatype mpi_ft_datatype_c_double_complex;
+struct mpi_ft_datatype mpi_ft_datatype_c_long_double_complex;
+struct mpi_ft_datatype mpi_ft_datatype_aint;
+struct mpi_ft_datatype mpi_ft_datatype_offset;
+struct mpi_ft_datatype mpi_ft_datatype_count;
+struct mpi_ft_datatype mpi_ft_datatype_cxx_bool;
+struct mpi_ft_datatype mpi_ft_datatype_cxx_float_complex;
+struct mpi_ft_datatype mpi_ft_datatype_cxx_double_complex;
+struct mpi_ft_datatype mpi_ft_datatype_cxx_long_double_complex;
+
 struct mpi_ft_op mpi_ft_op_max;
 struct mpi_ft_op mpi_ft_op_min;
 struct mpi_ft_op mpi_ft_op_sum;
@@ -125,7 +225,7 @@ void mpi_ft_status_init(EMPI_Status estatus, int count, int source, int tag, int
 	out->MPI_ERROR = error;
 }
 
-void mpi_ft_request_init(EMPI_Request reqcmp, EMPI_Request reqrep, bool complete, MPI_Comm comm, MPI_Status *status, int type, int backup, int *backuploc, void *storeloc, struct mpi_ft_request *out)
+void mpi_ft_request_init(EMPI_Request reqcmp, EMPI_Request reqrep, bool complete, MPI_Comm comm, MPI_Status *status, int type, /*void* backup, int *backuploc*/void *bufloc, void *storeloc, struct mpi_ft_request *out)
 {
 	out->reqcmp = (EMPI_Request *)malloc(sizeof(EMPI_Request));
 	out->reqrep = (EMPI_Request *)malloc(sizeof(EMPI_Request));
@@ -135,11 +235,11 @@ void mpi_ft_request_init(EMPI_Request reqcmp, EMPI_Request reqrep, bool complete
 	out->comm = comm;
 	if(status != MPI_STATUS_IGNORE) out->status = *status;
 	out->type = type;
-	out->backup = backup;
-	out->backuploc = backuploc;
+	//out->backup = backup;
+	//out->backuploc = backuploc;
+	out->bufloc = bufloc;
 	out->storeloc = storeloc;
 }
-
 
 long array_sum(const int *array,int size)
 {
@@ -1314,10 +1414,10 @@ int MPI_Finalize(void)
 	EMPI_Barrier(MPI_COMM_WORLD->eworldComm);
 	mpi_ft_free_older_collectives(last_collective);
 	last_collective = NULL;
-  dlclose(extLib);
+  //dlclose(extLib);
   //OMPI_Barrier(oworldComm);
   //OMPI_Finalize();
-  dlclose(openLib);
+  //dlclose(openLib);
   fclose(logfile);
   printf("after finalize returning\n");
   return 0;
@@ -1718,7 +1818,7 @@ int MPI_Init (int *argc, char ***argv)
   mpi_ft_comm_init(OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,&mpi_ft_comm_null);
   mpi_ft_op_init(OMPI_OP_NULL,EMPI_OP_NULL,&mpi_ft_op_null);
   mpi_ft_datatype_init(OMPI_DATATYPE_NULL,EMPI_DATATYPE_NULL,-1,&mpi_ft_datatype_null);
-  mpi_ft_request_init(EMPI_REQUEST_NULL,EMPI_REQUEST_NULL,false,MPI_COMM_NULL,MPI_STATUS_IGNORE,-1,-1,NULL,NULL,&mpi_ft_request_null);
+  mpi_ft_request_init(EMPI_REQUEST_NULL,EMPI_REQUEST_NULL,false,MPI_COMM_NULL,MPI_STATUS_IGNORE,-1,/*NULL,*/NULL,NULL,&mpi_ft_request_null);
   mpi_ft_comm_init(OMPI_COMM_SELF,OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,OMPI_COMM_NULL,EMPI_COMM_SELF,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,EMPI_COMM_NULL,&mpi_ft_comm_self);
   
 	mpi_ft_datatype_init(OMPI_CHAR,EMPI_CHAR,sizeof(char),&mpi_ft_datatype_char);
@@ -1736,7 +1836,57 @@ int MPI_Init (int *argc, char ***argv)
 	mpi_ft_datatype_init(OMPI_LONG_DOUBLE,EMPI_LONG_DOUBLE,sizeof(long double),&mpi_ft_datatype_long_double);
 	mpi_ft_datatype_init(OMPI_LONG_LONG_INT,EMPI_LONG_LONG_INT,sizeof(long long int),&mpi_ft_datatype_long_long_int);
 	mpi_ft_datatype_init(OMPI_UNSIGNED_LONG_LONG,EMPI_UNSIGNED_LONG_LONG,sizeof(unsigned long long),&mpi_ft_datatype_unsigned_long_long);
-  
+
+	mpi_ft_datatype_init(OMPI_PACKED,EMPI_PACKED,1,&mpi_ft_datatype_packed);
+	//mpi_ft_datatype_init(OMPI_LB,EMPI_LB,sizeof(int),&mpi_ft_datatype_lb);
+	//mpi_ft_datatype_init(OMPI_UB,EMPI_UB,sizeof(int),&mpi_ft_datatype_ub);
+	mpi_ft_datatype_init(OMPI_FLOAT_INT,EMPI_FLOAT_INT,sizeof(float)+sizeof(int),&mpi_ft_datatype_float_int);
+	mpi_ft_datatype_init(OMPI_DOUBLE_INT,EMPI_DOUBLE_INT,sizeof(double)+sizeof(int),&mpi_ft_datatype_double_int);
+	mpi_ft_datatype_init(OMPI_LONG_INT,EMPI_LONG_INT,sizeof(long)+sizeof(int),&mpi_ft_datatype_long_int);
+	mpi_ft_datatype_init(OMPI_SHORT_INT,EMPI_SHORT_INT,sizeof(short)+sizeof(int),&mpi_ft_datatype_short_int);
+	mpi_ft_datatype_init(OMPI_2INT,EMPI_2INT,sizeof(int)+sizeof(int),&mpi_ft_datatype_2int);
+	mpi_ft_datatype_init(OMPI_LONG_DOUBLE_INT,EMPI_LONG_DOUBLE_INT,sizeof(long double)+sizeof(int),&mpi_ft_datatype_long_double_int);
+	mpi_ft_datatype_init(OMPI_COMPLEX,EMPI_COMPLEX,8,&mpi_ft_datatype_complex);
+	mpi_ft_datatype_init(OMPI_DOUBLE_COMPLEX,EMPI_DOUBLE_COMPLEX,16,&mpi_ft_datatype_double_complex);
+	mpi_ft_datatype_init(OMPI_LOGICAL,EMPI_LOGICAL,4,&mpi_ft_datatype_logical);
+	mpi_ft_datatype_init(OMPI_REAL,EMPI_REAL,4,&mpi_ft_datatype_real);
+	mpi_ft_datatype_init(OMPI_DOUBLE_PRECISION,EMPI_DOUBLE_PRECISION,8,&mpi_ft_datatype_double_precision);
+	mpi_ft_datatype_init(OMPI_INTEGER,EMPI_INTEGER,4,&mpi_ft_datatype_integer);
+	mpi_ft_datatype_init(OMPI_2INTEGER,EMPI_2INTEGER,8,&mpi_ft_datatype_2integer);
+	mpi_ft_datatype_init(OMPI_2REAL,EMPI_2REAL,8,&mpi_ft_datatype_2real);
+	mpi_ft_datatype_init(OMPI_2DOUBLE_PRECISION,EMPI_2DOUBLE_PRECISION,16,&mpi_ft_datatype_2double_precision);
+	mpi_ft_datatype_init(OMPI_CHARACTER,EMPI_CHARACTER,1,&mpi_ft_datatype_character);
+	//mpi_ft_datatype_init(OMPI_REAL4,EMPI_REAL4,4,&mpi_ft_datatype_real4);
+	//mpi_ft_datatype_init(OMPI_REAL8,EMPI_REAL8,8,&mpi_ft_datatype_real8);
+	//mpi_ft_datatype_init(OMPI_REAL16,EMPI_REAL16,16,&mpi_ft_datatype_real16);
+	//mpi_ft_datatype_init(OMPI_COMPLEX8,EMPI_COMPLEX8,8,&mpi_ft_datatype_complex8);
+	//mpi_ft_datatype_init(OMPI_COMPLEX16,EMPI_COMPLEX16,16,&mpi_ft_datatype_complex16);
+	//mpi_ft_datatype_init(OMPI_COMPLEX32,EMPI_COMPLEX32,32,&mpi_ft_datatype_complex32);
+	//mpi_ft_datatype_init(OMPI_INTEGER1,EMPI_INTEGER1,1,&mpi_ft_datatype_integer1);
+	//mpi_ft_datatype_init(OMPI_INTEGER2,EMPI_INTEGER2,2,&mpi_ft_datatype_integer2);
+	//mpi_ft_datatype_init(OMPI_INTEGER4,EMPI_INTEGER4,4,&mpi_ft_datatype_integer4);
+	//mpi_ft_datatype_init(OMPI_INTEGER8,EMPI_INTEGER8,8,&mpi_ft_datatype_integer8);
+	//mpi_ft_datatype_init(OMPI_INTEGER16,EMPI_INTEGER16,16,&mpi_ft_datatype_integer16);
+	mpi_ft_datatype_init(OMPI_INT8_T,EMPI_INT8_T,sizeof(int8_t),&mpi_ft_datatype_int8_t);
+	mpi_ft_datatype_init(OMPI_INT16_T,EMPI_INT16_T,sizeof(int16_t),&mpi_ft_datatype_int16_t);
+	mpi_ft_datatype_init(OMPI_INT32_T,EMPI_INT32_T,sizeof(int32_t),&mpi_ft_datatype_int32_t);
+	mpi_ft_datatype_init(OMPI_INT64_T,EMPI_INT64_T,sizeof(int64_t),&mpi_ft_datatype_int64_t);
+	mpi_ft_datatype_init(OMPI_UINT8_T,EMPI_UINT8_T,sizeof(uint8_t),&mpi_ft_datatype_uint8_t);
+	mpi_ft_datatype_init(OMPI_UINT16_T,EMPI_UINT16_T,sizeof(uint16_t),&mpi_ft_datatype_uint16_t);
+	mpi_ft_datatype_init(OMPI_UINT32_T,EMPI_UINT32_T,sizeof(uint32_t),&mpi_ft_datatype_uint32_t);
+	mpi_ft_datatype_init(OMPI_UINT64_T,EMPI_UINT64_T,sizeof(uint64_t),&mpi_ft_datatype_uint64_t);
+	mpi_ft_datatype_init(OMPI_C_BOOL,EMPI_C_BOOL,sizeof(bool),&mpi_ft_datatype_c_bool);
+	mpi_ft_datatype_init(OMPI_C_FLOAT_COMPLEX,EMPI_C_FLOAT_COMPLEX,sizeof(float _Complex),&mpi_ft_datatype_c_float_complex);
+	mpi_ft_datatype_init(OMPI_C_DOUBLE_COMPLEX,EMPI_C_DOUBLE_COMPLEX,sizeof(double _Complex),&mpi_ft_datatype_c_double_complex);
+	mpi_ft_datatype_init(OMPI_C_LONG_DOUBLE_COMPLEX,EMPI_C_LONG_DOUBLE_COMPLEX,sizeof(long double _Complex),&mpi_ft_datatype_c_long_double_complex);
+	mpi_ft_datatype_init(OMPI_AINT,EMPI_AINT,4,&mpi_ft_datatype_aint);
+	mpi_ft_datatype_init(OMPI_OFFSET,EMPI_OFFSET,4,&mpi_ft_datatype_offset);
+	mpi_ft_datatype_init(OMPI_COUNT,EMPI_COUNT,sizeof(int),&mpi_ft_datatype_count);
+	mpi_ft_datatype_init(OMPI_CXX_BOOL,EMPI_CXX_BOOL,sizeof(bool),&mpi_ft_datatype_cxx_bool);
+	mpi_ft_datatype_init(OMPI_CXX_FLOAT_COMPLEX,EMPI_CXX_FLOAT_COMPLEX,sizeof(float _Complex),&mpi_ft_datatype_cxx_float_complex);
+	mpi_ft_datatype_init(OMPI_CXX_DOUBLE_COMPLEX,EMPI_CXX_DOUBLE_COMPLEX,sizeof(double _Complex),&mpi_ft_datatype_cxx_double_complex);
+	mpi_ft_datatype_init(OMPI_CXX_LONG_DOUBLE_COMPLEX,EMPI_CXX_LONG_DOUBLE_COMPLEX,sizeof(long double _Complex),&mpi_ft_datatype_cxx_long_double_complex);
+	
 	mpi_ft_op_init(OMPI_MAX,EMPI_MAX,&mpi_ft_op_max);
   mpi_ft_op_init(OMPI_MIN,EMPI_MIN,&mpi_ft_op_min);
   mpi_ft_op_init(OMPI_SUM,EMPI_SUM,&mpi_ft_op_sum);
@@ -1846,8 +1996,17 @@ int MPI_Init (int *argc, char ***argv)
   EMPI_Comm_rank (MPI_COMM_WORLD->eworldComm, &worldRank);
   EMPI_Comm_size (MPI_COMM_WORLD->eworldComm, &worldSize);
 
-	if(CMP_PER_REP > 0) nR = worldSize/(1+CMP_PER_REP);
-	else nR = 0;
+	if(getenv("COMP_PER_REP") != NULL)
+	{
+		int cpr = atoi(getenv("COMP_PER_REP"));
+		if(cpr > 0) nR = worldSize/(1+cpr);
+		else nR = 0;
+	}
+	else
+	{
+		if(CMP_PER_REP > 0) nR = worldSize/(1+CMP_PER_REP);
+		else nR = 0;
+	}
   //nR = worldSize - worldSize / REP_DEGREE;
   nC = worldSize - nR;
   
@@ -3372,15 +3531,17 @@ static void HandleErrors(OMPI_Comm *pcomm, int *perr, ... )
 								int rank;
 								int extracount;
 								int dis;
-								int backup;
+								//void *backup;
 								int size;
 								EMPI_Type_size(pdata->dt->edatatype,&size);
 								dis = pdata->count*size;
-								backup = *(int *)(pdata->buf+dis);
-								*((int *)(pdata->buf+dis)) = pdata->id;
 								if(size >= sizeof(int)) extracount = 1;
 								else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 								else extracount = (((int)sizeof(int))/size) + 1;
+								//backup = malloc(extracount*size);
+								//memcpy(backup,(pdata->buf)+dis,extracount*size);
+								//backup = *(int *)(pdata->buf+dis);
+								*((int *)(pdata->buf+dis)) = pdata->id;
 								do
 								{
 									retVal = 0;
@@ -3412,7 +3573,9 @@ static void HandleErrors(OMPI_Comm *pcomm, int *perr, ... )
 									retVal = 0;
 									retVal = check_errhandler_conditions_collective((pdata->comm->OMPI_CMP_REP_INTERCOMM),&req);
 								} while(retVal != 0);
-								*(int *)(pdata->buf+dis) = backup;
+								//memcpy((pdata->buf)+dis,backup,extracount*size);
+								//*(int *)(pdata->buf+dis) = backup;
+								//free(backup);
 							}
 						}
 						pdata = pdata->prev;
@@ -3488,15 +3651,17 @@ static void HandleErrors(OMPI_Comm *pcomm, int *perr, ... )
 								EMPI_Request req = EMPI_REQUEST_NULL;
 								int extracount;
 								int dis;
-								int backup;
+								//void *backup;
 								int size;
 								EMPI_Type_size(pdata->dt->edatatype,&size);
 								dis = pdata->count*size;
-								backup = *(int *)(pdata->buf+dis);
-								*((int *)(pdata->buf+dis)) = pdata->id;
 								if(size >= sizeof(int)) extracount = 1;
 								else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 								else extracount = (((int)sizeof(int))/size) + 1;
+								//backup = malloc(extracount*size);
+								//memcpy(backup,(pdata->buf)+dis,extracount*size);
+								//backup = *(int *)(pdata->buf+dis);
+								*((int *)(pdata->buf+dis)) = pdata->id;
 								do
 								{
 									retVal = 0;
@@ -3532,7 +3697,9 @@ static void HandleErrors(OMPI_Comm *pcomm, int *perr, ... )
 										goto RESENDandMARKdone;
 									}
 								} while(retVal != 0);
-								*(int *)(pdata->buf+dis) = backup;
+								//memcpy((pdata->buf)+dis,backup,extracount*size);
+								//*(int *)(pdata->buf+dis) = backup;
+								//free(backup);
 							}
 						}
 						pdata = pdata->prev;
@@ -5211,7 +5378,7 @@ int check_errhandler_conditions(OMPI_Comm ocomm, EMPI_Request *req, int rank)
   }
   return 0;
 }
-
+/*
 void SendUsingLine(char *line, int *worldComm_ranks)
 {
   int i;
@@ -5405,7 +5572,7 @@ void GenerateSendLog(char *logstr, int id, void *buf, int count, EMPI_Datatype d
     }
   }
   sprintf (logstr, "SEND %d %d %d %d %d %s\n", id, count, datatype, actualdest, tag, bufstr);
-}
+}*/
 
 /* MPI_Send */
 
@@ -5419,15 +5586,22 @@ int MPI_Send (void *buf, int count, MPI_Datatype datatype, int dest, int tag, MP
 	int rank;
 	int extracount;
 	int dis;
-	int backup;
+	//void *backup;
 	int size;
+	struct peertopeer_data *curargs;
+	curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 	EMPI_Type_size(datatype->edatatype,&size);
 	dis = count*size;
-	backup = *(int *)(buf+dis);
-	*((int *)(buf+dis)) = sendid;
 	if(size >= sizeof(int)) extracount = 1;
 	else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 	else extracount = (((int)sizeof(int))/size) + 1;
+	curargs->buf = malloc((count+extracount)*size);
+	memcpy(curargs->buf,buf,count*size);
+	*((int *)((curargs->buf) + dis)) = sendid;
+	//backup = malloc(extracount*size);
+	//memcpy(backup,buf+dis,extracount*size);
+	//backup = *(int *)(buf+dis);
+	//*((int *)(buf+dis)) = sendid;
 	bool skiprep, skipcmp;
 	struct skiplist *skip,*oldskip;
 	if((comm->EMPI_COMM_REP) != EMPI_COMM_NULL)
@@ -5456,7 +5630,7 @@ int MPI_Send (void *buf, int count, MPI_Datatype datatype, int dest, int tag, MP
 				retValRep = check_errhandler_conditions((comm->OMPI_COMM_REP),&reqRep,cmpToRepMap[dest]);
 				if(retValRep == 0)
 				{
-					retValRep = EMPI_Isend (buf, count +extracount, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_COMM_REP), &reqRep);
+					retValRep = EMPI_Isend (curargs->buf, count +extracount, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_COMM_REP), &reqRep);
 					int flag = 0;
 					do
 					{
@@ -5477,11 +5651,9 @@ int MPI_Send (void *buf, int count, MPI_Datatype datatype, int dest, int tag, MP
 		}
 		req = EMPI_REQUEST_NULL;
 		reqRep = EMPI_REQUEST_NULL;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 		curargs->sendtype = true;
-		curargs->buf = malloc(count*size);
-		memcpy(curargs->buf,buf,count*size);
+		//curargs->buf = malloc(count*size);
+		//memcpy(curargs->buf,buf,count*size);
 		curargs->count = count;
 		curargs->dt = datatype;
 		curargs->target = dest;
@@ -5554,8 +5726,8 @@ ConvertToCMPSEND:
 				if(cmpToRepMap[dest] != -1 && cmpToRepMap[rank] == -1 && !skiprep) retValRep = check_errhandler_conditions((comm->OMPI_CMP_REP_INTERCOMM),&reqRep,cmpToRepMap[dest]);
 				if(retVal == 0 && retValRep == 0)
 				{
-					if(!skipcmp)retVal = EMPI_Isend (buf, count+extracount, datatype->edatatype, dest, tag, (comm->EMPI_COMM_CMP), &req);
-					if(cmpToRepMap[dest] != -1 && cmpToRepMap[rank] == -1 && !skiprep) retValRep = EMPI_Isend (buf, count, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_CMP_REP_INTERCOMM), &reqRep);
+					if(!skipcmp)retVal = EMPI_Isend (curargs->buf, count+extracount, datatype->edatatype, dest, tag, (comm->EMPI_COMM_CMP), &req);
+					if(cmpToRepMap[dest] != -1 && cmpToRepMap[rank] == -1 && !skiprep) retValRep = EMPI_Isend (curargs->buf, count+extracount, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_CMP_REP_INTERCOMM), &reqRep);
 					int flag = 0;
 					int flagRep = 0;
 					do
@@ -5575,11 +5747,9 @@ ConvertToCMPSEND:
 		}
 		req = EMPI_REQUEST_NULL;
 		reqRep = EMPI_REQUEST_NULL;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 		curargs->sendtype = true;
-		curargs->buf = malloc(count*size);
-		memcpy(curargs->buf,buf,count*size);
+		//curargs->buf = malloc(count*size);
+		//memcpy(curargs->buf,buf,count*size);
 		curargs->count = count;
 		curargs->dt = datatype;
 		curargs->target = dest;
@@ -5606,7 +5776,9 @@ ConvertToCMPSENDSTORED:
 			} while(retValRep != 0);
 		}
 	}
-	*(int *)(buf+dis) = backup;
+	//memcpy(buf+dis,backup,extracount*size);
+	//*(int *)(buf+dis) = backup;
+	//free(backup);
 	return MPI_SUCCESS;
 }
 
@@ -5626,17 +5798,25 @@ int MPI_Isend (void *buf, int count, MPI_Datatype datatype, int dest, int tag, M
 	int rank;
 	int extracount;
 	int dis;
-	int backup;
+	//void *backup;
 	int size;
+	struct peertopeer_data *curargs;
+	curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 	EMPI_Type_size(datatype->edatatype,&size);
 	dis = count*size;
-	backup = *(int *)(buf+dis);
-	*((int *)(buf+dis)) = sendid;
 	if(size >= sizeof(int)) extracount = 1;
 	else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 	else extracount = (((int)sizeof(int))/size) + 1;
-	(ftreq)->backup = backup;
-	(ftreq)->backuploc = (int *)(buf+dis);
+	//backup = malloc(extracount*size);
+	curargs->buf = malloc((count+extracount)*size);
+	memcpy(curargs->buf,buf,count*size);
+	//memcpy(backup,buf+dis,extracount*size);
+	//backup = *(int *)(buf+dis);
+	*((int *)((curargs->buf)+dis)) = sendid;
+	//*((int *)(buf+dis)) = sendid;
+	//(ftreq)->backup = backup;
+	//(ftreq)->backuploc = (void *)(buf+dis);
+	(ftreq)->bufloc = buf;
 	(ftreq)->status.count = count;
 	(ftreq)->status.MPI_SOURCE = dest;
 	(ftreq)->status.MPI_TAG = tag;
@@ -5669,7 +5849,7 @@ int MPI_Isend (void *buf, int count, MPI_Datatype datatype, int dest, int tag, M
 				retValRep = check_errhandler_conditions((comm->OMPI_COMM_REP),((ftreq)->reqrep),cmpToRepMap[dest]);
 				if(retValRep == 0)
 				{
-					retValRep = EMPI_Isend (buf, count +extracount, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_COMM_REP), ((ftreq)->reqrep));
+					retValRep = EMPI_Isend (curargs->buf, count +extracount, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_COMM_REP), ((ftreq)->reqrep));
 				}
 				if(comm->EMPI_COMM_CMP != EMPI_COMM_NULL)
 				{
@@ -5681,11 +5861,9 @@ int MPI_Isend (void *buf, int count, MPI_Datatype datatype, int dest, int tag, M
 		(ftreq)->complete = false;
 		(ftreq)->comm = comm;
 		(ftreq)->type = MPI_FT_REQUEST_SEND;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 		curargs->sendtype = true;
-		curargs->buf = malloc(count*size);
-		memcpy(curargs->buf,buf,count*size);
+		//curargs->buf = malloc(count*size);
+		//memcpy(curargs->buf,buf,count*size);
 		curargs->count = count;
 		curargs->dt = datatype;
 		curargs->target = dest;
@@ -5757,19 +5935,17 @@ ConvertToCMPISEND:
 				if(cmpToRepMap[dest] != -1 && cmpToRepMap[rank] == -1 && !skiprep) retValRep = check_errhandler_conditions((comm->OMPI_CMP_REP_INTERCOMM),((ftreq)->reqrep),cmpToRepMap[dest]);
 				if(retVal == 0 && retValRep == 0)
 				{
-					if(!skipcmp)retVal = EMPI_Isend (buf, count+extracount, datatype->edatatype, dest, tag, (comm->EMPI_COMM_CMP), ((ftreq)->reqcmp));
-					if(cmpToRepMap[dest] != -1 && cmpToRepMap[rank] == -1 && !skiprep) retValRep = EMPI_Isend (buf, count, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_CMP_REP_INTERCOMM), ((ftreq)->reqrep));
+					if(!skipcmp)retVal = EMPI_Isend (curargs->buf, count+extracount, datatype->edatatype, dest, tag, (comm->EMPI_COMM_CMP), ((ftreq)->reqcmp));
+					if(cmpToRepMap[dest] != -1 && cmpToRepMap[rank] == -1 && !skiprep) retValRep = EMPI_Isend (curargs->buf, count+extracount, datatype->edatatype, cmpToRepMap[dest], tag, (comm->EMPI_CMP_REP_INTERCOMM), ((ftreq)->reqrep));
 				}
 			} while(retVal != 0 || retValRep != 0);
 		}
 		(ftreq)->complete = false;
 		(ftreq)->comm = comm;
 		(ftreq)->type = MPI_FT_REQUEST_SEND;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 		curargs->sendtype = true;
-		curargs->buf = malloc(count*size);
-		memcpy(curargs->buf,buf,count*size);
+		//curargs->buf = malloc(count*size);
+		//memcpy(curargs->buf,buf,count*size);
 		curargs->count = count;
 		curargs->dt = datatype;
 		curargs->target = dest;
@@ -5820,14 +5996,19 @@ int MPI_Recv (void *buf, int count, MPI_Datatype datatype, int source, int tag, 
 	int rank;
 	int extracount;
 	int dis;
-	int backup;
+	//void *backup;
 	int size;
+	struct peertopeer_data *curargs;
+	curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 	EMPI_Type_size(datatype->edatatype,&size);
 	dis = count*size;
-	backup = *(int *)(buf+dis);
 	if(size >= sizeof(int)) extracount = 1;
 	else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 	else extracount = (((int)sizeof(int))/size) + 1;
+	//backup = malloc(extracount*size);
+	//memcpy(backup,buf+dis,extracount*size);
+	//backup = *(int *)(buf+dis);
+	curargs->buf = malloc((count+extracount)*size);
 	if((comm->EMPI_COMM_REP) != EMPI_COMM_NULL)
 	{
 		do
@@ -5837,8 +6018,8 @@ int MPI_Recv (void *buf, int count, MPI_Datatype datatype, int source, int tag, 
 			else retValRep = check_errhandler_conditions((comm->OMPI_COMM_REP),&reqRep,cmpToRepMap[source]);
 			if(retValRep == 0)
 			{
-				if(cmpToRepMap[source] == -1) retValRep = EMPI_Irecv (buf, count +extracount, datatype->edatatype, source, tag, (comm->EMPI_CMP_REP_INTERCOMM), &reqRep);
-				else retValRep = EMPI_Irecv (buf, count +extracount, datatype->edatatype, cmpToRepMap[source], tag, (comm->EMPI_COMM_REP), &reqRep);
+				if(cmpToRepMap[source] == -1) retValRep = EMPI_Irecv (curargs->buf, count +extracount, datatype->edatatype, source, tag, (comm->EMPI_CMP_REP_INTERCOMM), &reqRep);
+				else retValRep = EMPI_Irecv (curargs->buf, count +extracount, datatype->edatatype, cmpToRepMap[source], tag, (comm->EMPI_COMM_REP), &reqRep);
 				int flag = 0;
 				do
 				{
@@ -5856,8 +6037,7 @@ int MPI_Recv (void *buf, int count, MPI_Datatype datatype, int source, int tag, 
 		} while(retValRep != 0);
 		req = EMPI_REQUEST_NULL;
 		reqRep = EMPI_REQUEST_NULL;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
+		memcpy(buf,curargs->buf,count*size);
 		curargs->sendtype = false;
 		//curargs->buf = malloc(count*size);
 		//memcpy(curargs->buf,buf,count*size);
@@ -5870,7 +6050,8 @@ int MPI_Recv (void *buf, int count, MPI_Datatype datatype, int source, int tag, 
 		curargs->completerep = true;
 		curargs->req = (MPI_Request *)malloc(sizeof(MPI_Request));
 		*(curargs->req) = MPI_REQUEST_NULL;
-		curargs->id = *(int *)(buf+dis);
+		curargs->id = *(int *)((curargs->buf)+dis);
+		free(curargs->buf);
 		if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
 		else first_peertopeer = curargs;
 		curargs->prev = NULL;
@@ -5896,7 +6077,7 @@ ConvertToCMPRECV:
 			retVal = check_errhandler_conditions((comm->OMPI_COMM_CMP),&req,source);
 			if(retVal == 0)
 			{
-				retVal = EMPI_Irecv (buf, count+extracount, datatype->edatatype, source, tag, (comm->EMPI_COMM_CMP), &req);
+				retVal = EMPI_Irecv (curargs->buf, count+extracount, datatype->edatatype, source, tag, (comm->EMPI_COMM_CMP), &req);
 				int flag = 0;
 				do
 				{
@@ -5908,8 +6089,7 @@ ConvertToCMPRECV:
 		} while(retVal != 0);
 		req = EMPI_REQUEST_NULL;
 		reqRep = EMPI_REQUEST_NULL;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
+		memcpy(buf,curargs->buf,count*size);
 		curargs->sendtype = false;
 		//curargs->buf = malloc(count*size);
 		//memcpy(curargs->buf,buf,count*size);
@@ -5922,7 +6102,8 @@ ConvertToCMPRECV:
 		curargs->completerep = true;
 		curargs->req = (MPI_Request *)malloc(sizeof(MPI_Request));
 		*(curargs->req) = MPI_REQUEST_NULL;
-		curargs->id = *(int *)(buf+dis);
+		curargs->id = *(int *)((curargs->buf)+dis);
+		free(curargs->buf);
 		if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
 		else first_peertopeer = curargs;
 		curargs->prev = NULL;
@@ -5938,7 +6119,9 @@ ConvertToCMPRECVSTORED:
 			} while(retValRep != 0);
 		}
 	}
-	*(int *)(buf+dis) = backup;
+	//memcpy(buf+dis,backup,extracount*size);
+	//*(int *)(buf+dis) = backup;
+	//free(backup);
 	return MPI_SUCCESS;
 }
 
@@ -5959,16 +6142,22 @@ int MPI_Irecv (void *buf, int count, MPI_Datatype datatype, int source, int tag,
 	int rank;
 	int extracount;
 	int dis;
-	int backup;
+	//void *backup;
 	int size;
+	struct peertopeer_data *curargs;
+	curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 	EMPI_Type_size(datatype->edatatype,&size);
 	dis = count*size;
-	backup = *(int *)(buf+dis);
 	if(size >= sizeof(int)) extracount = 1;
 	else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 	else extracount = (((int)sizeof(int))/size) + 1;
-	(ftreq)->backup = backup;
-	(ftreq)->backuploc = (int *)(buf+dis);
+	//backup = malloc(extracount*size);
+	//memcpy(backup,buf+dis,extracount*size);
+	//backup = *(int *)(buf+dis);
+	//(ftreq)->backup = backup;
+	//(ftreq)->backuploc = (void *)(buf+dis);
+	curargs->buf = malloc((count+extracount)*size);
+	(ftreq)->bufloc = buf;
 	(ftreq)->status.count = count;
 	(ftreq)->status.MPI_SOURCE = source;
 	(ftreq)->status.MPI_TAG = tag;
@@ -5982,8 +6171,8 @@ int MPI_Irecv (void *buf, int count, MPI_Datatype datatype, int source, int tag,
 			else retValRep = check_errhandler_conditions((comm->OMPI_COMM_REP),((ftreq)->reqrep),cmpToRepMap[source]);
 			if(retValRep == 0)
 			{
-				if(cmpToRepMap[source] == -1) retValRep = EMPI_Irecv (buf, count +extracount, datatype->edatatype, source, tag, (comm->EMPI_CMP_REP_INTERCOMM), ((ftreq)->reqcmp));
-				else retValRep = EMPI_Irecv (buf, count +extracount, datatype->edatatype, cmpToRepMap[source], tag, (comm->EMPI_COMM_REP), ((ftreq)->reqrep));
+				if(cmpToRepMap[source] == -1) retValRep = EMPI_Irecv (curargs->buf, count +extracount, datatype->edatatype, source, tag, (comm->EMPI_CMP_REP_INTERCOMM), ((ftreq)->reqcmp));
+				else retValRep = EMPI_Irecv (curargs->buf, count +extracount, datatype->edatatype, cmpToRepMap[source], tag, (comm->EMPI_COMM_REP), ((ftreq)->reqrep));
 			}
 			if(comm->EMPI_COMM_CMP != EMPI_COMM_NULL)
 			{
@@ -5995,10 +6184,8 @@ int MPI_Irecv (void *buf, int count, MPI_Datatype datatype, int source, int tag,
 		(ftreq)->complete = false;
 		(ftreq)->comm = comm;
 		(ftreq)->type = MPI_FT_REQUEST_RECV;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 		curargs->sendtype = false;
-		curargs->buf = buf;
+		//curargs->buf = buf;
 		//memcpy(curargs->buf,buf,count*size);
 		curargs->count = count;
 		curargs->dt = datatype;
@@ -6034,16 +6221,14 @@ ConvertToCMPIRECV:
 			retVal = check_errhandler_conditions((comm->OMPI_COMM_CMP),((ftreq)->reqcmp),source);
 			if(retVal == 0)
 			{
-				retVal = EMPI_Irecv (buf, count+extracount, datatype->edatatype, source, tag, (comm->EMPI_COMM_CMP), ((ftreq)->reqcmp));
+				retVal = EMPI_Irecv (curargs->buf, count+extracount, datatype->edatatype, source, tag, (comm->EMPI_COMM_CMP), ((ftreq)->reqcmp));
 			}
 		} while(retVal != 0);
 		(ftreq)->complete = false;
 		(ftreq)->comm = comm;
 		(ftreq)->type = MPI_FT_REQUEST_RECV;
-		struct peertopeer_data *curargs;
-		curargs = (struct peertopeer_data *)malloc(sizeof(struct collective_data));
 		curargs->sendtype = false;
-		curargs->buf = buf;
+		//curargs->buf = buf;
 		//memcpy(curargs->buf,buf,count*size);
 		curargs->count = count;
 		curargs->dt = datatype;
@@ -6098,6 +6283,9 @@ int MPI_Test(MPI_Request *req, int *flag, MPI_Status *status)
 	ftreq = *req;
 	int tmpflagcmp;
 	int tmpflagrep;
+	//int extracount;
+	int count;
+	int size;
 	EMPI_Status tmpstatuscmp;
 	EMPI_Status tmpstatusrep;
 	int retVal = 0;
@@ -6130,7 +6318,13 @@ int MPI_Test(MPI_Request *req, int *flag, MPI_Status *status)
 				if(tmpflagrep)
 				{
 					(ftreq)->complete = true;
-					*((ftreq)->backuploc) = (ftreq)->backup;
+					//EMPI_Type_size(((struct peertopeer_data*)((ftreq)->storeloc))->dt->edatatype,&size);
+					//if(size >= sizeof(int)) extracount = 1;
+					//else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					//else extracount = (((int)sizeof(int))/size) + 1;
+					//memcpy((ftreq)->backuploc,(ftreq)->backup,extracount*size);
+					//*((ftreq)->backuploc) = (ftreq)->backup;
+					//free((ftreq)->backup);
 					((struct peertopeer_data*)((ftreq)->storeloc))->completerep = true;
 					((ftreq)->status).status = tmpstatusrep;
 					((ftreq)->status).MPI_TAG = tmpstatusrep.EMPI_TAG;
@@ -6173,21 +6367,31 @@ int MPI_Test(MPI_Request *req, int *flag, MPI_Status *status)
 					EMPI_Test(((ftreq)->reqcmp),&tmpflagcmp,&tmpstatuscmp);
 					ftreq = tmpreq;
 				}
+				else tmpflagcmp = 1;
 				if(!(((struct peertopeer_data*)((ftreq)->storeloc))->completerep))
 				{
 					MPI_Request tmpreq = ftreq;
 					EMPI_Test(((ftreq)->reqrep),&tmpflagrep,&tmpstatusrep);
 					ftreq = tmpreq;
 				}
-				if(tmpflagcmp) ((struct peertopeer_data*)((ftreq)->storeloc))->completecmp = true;
-				else tmpflagcmp = 1;
-				if(tmpflagrep) ((struct peertopeer_data*)((ftreq)->storeloc))->completerep = true;
 				else tmpflagrep = 1;
+				if(tmpflagcmp) ((struct peertopeer_data*)((ftreq)->storeloc))->completecmp = true;
+				if(tmpflagrep) ((struct peertopeer_data*)((ftreq)->storeloc))->completerep = true;
 				if(tmpflagcmp && tmpflagrep)
 				{
 					(ftreq)->complete = true;
-					((struct peertopeer_data *)((ftreq)->storeloc))->id = *(int *)((ftreq)->backuploc);
-					*((ftreq)->backuploc) = (ftreq)->backup;
+					count = (((struct peertopeer_data *)((ftreq)->storeloc))->count);
+					EMPI_Type_size(((struct peertopeer_data*)((ftreq)->storeloc))->dt->edatatype,&size);
+					memcpy((ftreq)->bufloc,(((struct peertopeer_data *)((ftreq)->storeloc))->buf),count*size);
+					((struct peertopeer_data *)((ftreq)->storeloc))->id = *((int *)((((struct peertopeer_data *)((ftreq)->storeloc))->buf) + (count * size)));
+					free((((struct peertopeer_data *)((ftreq)->storeloc))->buf));
+					//EMPI_Type_size(((struct peertopeer_data*)((ftreq)->storeloc))->dt->edatatype,&size);
+					//if(size >= sizeof(int)) extracount = 1;
+					//else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					//else extracount = (((int)sizeof(int))/size) + 1;
+					//memcpy((ftreq)->backuploc,(ftreq)->backup,extracount*size);
+					//*((ftreq)->backuploc) = (ftreq)->backup;
+					//free((ftreq)->backup);
 					if(*((ftreq)->reqrep) != EMPI_REQUEST_NULL)
 					{
 						((ftreq)->status).status = tmpstatusrep;
@@ -6238,7 +6442,13 @@ ConvertToCMPTESTSEND:
 				if(tmpflagcmp && tmpflagrep)
 				{
 					(ftreq)->complete = true;
-					*((ftreq)->backuploc) = (ftreq)->backup;
+					//EMPI_Type_size(((struct peertopeer_data*)((ftreq)->storeloc))->dt->edatatype,&size);
+					//if(size >= sizeof(int)) extracount = 1;
+					//else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					//else extracount = (((int)sizeof(int))/size) + 1;
+					//memcpy((ftreq)->backuploc,(ftreq)->backup,extracount*size);
+					//*((ftreq)->backuploc) = (ftreq)->backup;
+					//free((ftreq)->backup);
 					((ftreq)->status).status = tmpstatuscmp;
 					((ftreq)->status).MPI_TAG = tmpstatuscmp.EMPI_TAG;
 					((ftreq)->status).MPI_SOURCE = tmpstatuscmp.EMPI_SOURCE;
@@ -6275,8 +6485,19 @@ ConvertToCMPTESTRECV:
 				if(tmpflagcmp)
 				{
 					(ftreq)->complete = true;
-					((struct peertopeer_data *)((ftreq)->storeloc))->id = *(int *)((ftreq)->backuploc);
-					*((ftreq)->backuploc) = (ftreq)->backup;
+					count = (((struct peertopeer_data *)((ftreq)->storeloc))->count);
+					EMPI_Type_size(((struct peertopeer_data*)((ftreq)->storeloc))->dt->edatatype,&size);
+					memcpy((ftreq)->bufloc,(((struct peertopeer_data *)((ftreq)->storeloc))->buf),count*size);
+					((struct peertopeer_data *)((ftreq)->storeloc))->id = *((int *)((((struct peertopeer_data *)((ftreq)->storeloc))->buf) + (count * size)));
+					free((((struct peertopeer_data *)((ftreq)->storeloc))->buf));
+					//((struct peertopeer_data *)((ftreq)->storeloc))->id = *(int *)((ftreq)->backuploc);
+					//EMPI_Type_size(((struct peertopeer_data*)((ftreq)->storeloc))->dt->edatatype,&size);
+					//if(size >= sizeof(int)) extracount = 1;
+					//else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					//else extracount = (((int)sizeof(int))/size) + 1;
+					//memcpy((ftreq)->backuploc,(ftreq)->backup,extracount*size);
+					//*((ftreq)->backuploc) = (ftreq)->backup;
+					//free((ftreq)->backup);
 					((struct peertopeer_data*)((ftreq)->storeloc))->completecmp = true;
 					((ftreq)->status).status = tmpstatuscmp;
 					((ftreq)->status).MPI_TAG = tmpstatuscmp.EMPI_TAG;
@@ -6619,7 +6840,7 @@ ConvertToCMPREDUCE:
 }
 
 /* MPI_Allreduce */
-/*int MPI_Allreduce (void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+int MPI_Allreduce (void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
   int retVal;
   EMPI_Request req = EMPI_REQUEST_NULL;
@@ -6766,7 +6987,7 @@ ConvertToCMPALLREDUCE:
     } while(retVal != 0);
   }
   return MPI_SUCCESS;
-}*/
+}
 
 /*int MPI_Allreduce(void *sendbuf, void * recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
@@ -7097,7 +7318,7 @@ ConvertToCMPALLREDUCESTORED:
   return MPI_SUCCESS;
 }*/
 
-int MPI_Allreduce(void *sendbuf, void * recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+/*int MPI_Allreduce(void *sendbuf, void * recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
 	int retVal;
 	int retValinter;
@@ -7433,7 +7654,7 @@ ConvertToCMPALLREDUCESTORED:
 		}
   }
   return MPI_SUCCESS;
-}
+}*/
 
 int closest_replica(int cmpRank)
 {

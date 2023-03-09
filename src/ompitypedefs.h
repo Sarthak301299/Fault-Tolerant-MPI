@@ -1,5 +1,6 @@
 #ifndef _TYPE_DEFINITION_H_
 #define _TYPE_DEFINITION_H_
+#include <stddef.h>
 typedef ptrdiff_t OMPI_Aint;
 typedef long long OMPI_Offset;
 typedef long long OMPI_Count;

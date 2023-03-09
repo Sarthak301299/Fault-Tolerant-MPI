@@ -468,7 +468,7 @@ void GenerateSendLog(char *, int, void *, int, EMPI_Datatype, int, int, EMPI_Com
 void GenerateRecvLog(char *, int, int, int, EMPI_Comm);
 
 void GetFirstWord(char *string, char *first);
-void SendUsingLine(char *line, int *worldComm_ranks);
+//void SendUsingLine(char *line, int *worldComm_ranks);
 void GetDestAndId(char *line, int *id, int *dest);
 void GetSrcAndId(char *line, int *id, int *src);
 bool IsRecvComplete(int src, int id);

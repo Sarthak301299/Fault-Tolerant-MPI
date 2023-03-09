@@ -5,6 +5,7 @@
 #include "declarations.h"
 #include "ompitypedefs.h"
 #include "ompideclarations.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,15 +14,15 @@ extern "C" {
 extern void *extLib;
 extern void *openLib;
 
-typedef struct mpi_ft_datatype{
+struct mpi_ft_datatype{
   OMPI_Datatype odatatype;
   EMPI_Datatype edatatype;
   int size;
-} *MPI_Datatype;
+};
+//struct mpi_ft_datatype;
+typedef struct mpi_ft_datatype *MPI_Datatype;
 
-void mpi_ft_datatype_init(OMPI_Datatype, EMPI_Datatype, int, struct mpi_ft_datatype *);
-
-typedef struct mpi_ft_comm{
+struct mpi_ft_comm{
   OMPI_Comm oworldComm;
   OMPI_Comm OMPI_COMM_CMP;
   OMPI_Comm OMPI_COMM_REP;
@@ -34,21 +35,21 @@ typedef struct mpi_ft_comm{
   EMPI_Comm EMPI_CMP_REP_INTERCOMM;
 	EMPI_Comm EMPI_CMP_NO_REP;
 	EMPI_Comm EMPI_CMP_NO_REP_INTERCOMM;
-} *MPI_Comm;
+};
+//struct mpi_ft_comm;
+typedef struct mpi_ft_comm *MPI_Comm;
 
-void mpi_ft_comm_init(OMPI_Comm, OMPI_Comm, OMPI_Comm, OMPI_Comm, OMPI_Comm, OMPI_Comm, EMPI_Comm, EMPI_Comm, EMPI_Comm, EMPI_Comm, EMPI_Comm, EMPI_Comm, struct mpi_ft_comm *);
+struct mpi_ft_op{
+  OMPI_Op oop;
+  EMPI_Op eop;
+  //void *func;
+};
+//struct mpi_ft_op;
+typedef struct mpi_ft_op *MPI_Op;
 
 typedef int MPI_Group;
 typedef int MPI_Win;
 typedef struct ADIOI_FileD *MPI_File;
-typedef struct mpi_ft_op{
-  OMPI_Op oop;
-  EMPI_Op eop;
-  //void *func;
-} *MPI_Op;
-
-void mpi_ft_op_init(OMPI_Op, EMPI_Op, struct mpi_ft_op *);
-
 
 typedef enum MPIR_Win_flavor {MPI_WIN_FLAVOR_CREATE = 1,    MPI_WIN_FLAVOR_ALLOCATE = 2,    MPI_WIN_FLAVOR_DYNAMIC = 3,    MPI_WIN_FLAVOR_SHARED = 4} MPIR_Win_flavor_t;
 typedef enum MPIR_Win_model {MPI_WIN_SEPARATE = 1,    MPI_WIN_UNIFIED = 2} MPIR_Win_model_t;
@@ -67,7 +68,8 @@ typedef MPI_Comm_errhandler_function MPI_Comm_errhandler_fn;
 typedef MPI_File_errhandler_function MPI_File_errhandler_fn;
 typedef MPI_Win_errhandler_function MPI_Win_errhandler_fn;
 typedef int MPI_Errhandler;
-typedef struct mpi_ft_status{
+
+struct mpi_ft_status{
 	EMPI_Status status;
 	int count;
 	//int count_lo;
@@ -75,23 +77,24 @@ typedef struct mpi_ft_status{
 	int MPI_SOURCE;
 	int MPI_TAG;
 	int MPI_ERROR;
-} MPI_Status;
+};
+//struct mpi_ft_status;
+typedef struct mpi_ft_status MPI_Status;
 
-void mpi_ft_status_init(EMPI_Status, int, int, int, int, struct mpi_ft_status *);
-
-typedef struct mpi_ft_request{
+struct mpi_ft_request{
 	EMPI_Request *reqcmp;
 	EMPI_Request *reqrep;
 	bool complete;
 	MPI_Comm comm;
 	MPI_Status status;
 	int type;
-	int backup;
-	int *backuploc;
+	void *bufloc;
+	//void *backup;
+	//void *backuploc;
 	void *storeloc;
-} *MPI_Request;
-
-void mpi_ft_request_init(EMPI_Request, EMPI_Request, bool, MPI_Comm, MPI_Status *, int, int, int *, void *, struct mpi_ft_request *);
+};
+//struct mpi_ft_request;
+typedef struct mpi_ft_request *MPI_Request;
 
 typedef int MPI_Message;
 typedef void (MPI_User_function) ( void *, void *, int *, MPI_Datatype * );
@@ -153,6 +156,57 @@ extern struct mpi_ft_datatype mpi_ft_datatype_double;
 extern struct mpi_ft_datatype mpi_ft_datatype_long_double;
 extern struct mpi_ft_datatype mpi_ft_datatype_long_long_int;
 extern struct mpi_ft_datatype mpi_ft_datatype_unsigned_long_long;
+
+extern struct mpi_ft_datatype mpi_ft_datatype_packed;
+//extern struct mpi_ft_datatype mpi_ft_datatype_lb;
+//extern struct mpi_ft_datatype mpi_ft_datatype_ub;
+extern struct mpi_ft_datatype mpi_ft_datatype_float_int;
+extern struct mpi_ft_datatype mpi_ft_datatype_double_int;
+extern struct mpi_ft_datatype mpi_ft_datatype_long_int;
+extern struct mpi_ft_datatype mpi_ft_datatype_short_int;
+extern struct mpi_ft_datatype mpi_ft_datatype_2int;
+extern struct mpi_ft_datatype mpi_ft_datatype_long_double_int;
+extern struct mpi_ft_datatype mpi_ft_datatype_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_double_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_logical;
+extern struct mpi_ft_datatype mpi_ft_datatype_real;
+extern struct mpi_ft_datatype mpi_ft_datatype_double_precision;
+extern struct mpi_ft_datatype mpi_ft_datatype_integer;
+extern struct mpi_ft_datatype mpi_ft_datatype_2integer;
+extern struct mpi_ft_datatype mpi_ft_datatype_2real;
+extern struct mpi_ft_datatype mpi_ft_datatype_2double_precision;
+extern struct mpi_ft_datatype mpi_ft_datatype_character;
+//extern struct mpi_ft_datatype mpi_ft_datatype_real4;
+//extern struct mpi_ft_datatype mpi_ft_datatype_real8;
+//extern struct mpi_ft_datatype mpi_ft_datatype_real16;
+//extern struct mpi_ft_datatype mpi_ft_datatype_complex8;
+//extern struct mpi_ft_datatype mpi_ft_datatype_complex16;
+//extern struct mpi_ft_datatype mpi_ft_datatype_complex32;
+//extern struct mpi_ft_datatype mpi_ft_datatype_integer1;
+//extern struct mpi_ft_datatype mpi_ft_datatype_integer2;
+//extern struct mpi_ft_datatype mpi_ft_datatype_integer4;
+//extern struct mpi_ft_datatype mpi_ft_datatype_integer8;
+//extern struct mpi_ft_datatype mpi_ft_datatype_integer16;
+extern struct mpi_ft_datatype mpi_ft_datatype_int8_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_int16_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_int32_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_int64_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_uint8_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_uint16_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_uint32_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_uint64_t;
+extern struct mpi_ft_datatype mpi_ft_datatype_c_bool;
+extern struct mpi_ft_datatype mpi_ft_datatype_c_float_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_c_double_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_c_long_double_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_aint;
+extern struct mpi_ft_datatype mpi_ft_datatype_offset;
+extern struct mpi_ft_datatype mpi_ft_datatype_count;
+extern struct mpi_ft_datatype mpi_ft_datatype_cxx_bool;
+extern struct mpi_ft_datatype mpi_ft_datatype_cxx_float_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_cxx_double_complex;
+extern struct mpi_ft_datatype mpi_ft_datatype_cxx_long_double_complex;
+
 extern struct mpi_ft_op mpi_ft_op_max;
 extern struct mpi_ft_op mpi_ft_op_min;
 extern struct mpi_ft_op mpi_ft_op_sum;
@@ -199,56 +253,58 @@ extern struct mpi_ft_op mpi_ft_op_no_op;
 #define MPI_LONG_LONG_INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_long_long_int)
 #define MPI_UNSIGNED_LONG_LONG MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_unsigned_long_long)
 #define MPI_LONG_LONG MPI_LONG_LONG_INT
-/*#define MPI_PACKED ((MPI_Datatype)0x4c00010f)
-#define MPI_LB ((MPI_Datatype)0x4c000010)
-#define MPI_UB ((MPI_Datatype)0x4c000011)
-#define MPI_FLOAT_INT ((MPI_Datatype)0x8c000000)
-#define MPI_DOUBLE_INT ((MPI_Datatype)0x8c000001)
-#define MPI_LONG_INT ((MPI_Datatype)0x8c000002)
-#define MPI_SHORT_INT ((MPI_Datatype)0x8c000003)
-#define MPI_2INT ((MPI_Datatype)0x4c000816)
-#define MPI_LONG_DOUBLE_INT ((MPI_Datatype)0x8c000004)
-#define MPI_COMPLEX ((MPI_Datatype)1275070494)
-#define MPI_DOUBLE_COMPLEX ((MPI_Datatype)1275072546)
-#define MPI_LOGICAL ((MPI_Datatype)1275069469)
-#define MPI_REAL ((MPI_Datatype)1275069468)
-#define MPI_DOUBLE_PRECISION ((MPI_Datatype)1275070495)
-#define MPI_INTEGER ((MPI_Datatype)1275069467)
-#define MPI_2INTEGER ((MPI_Datatype)1275070496)
-#define MPI_2REAL ((MPI_Datatype)1275070497)
-#define MPI_2DOUBLE_PRECISION ((MPI_Datatype)1275072547)
-#define MPI_CHARACTER ((MPI_Datatype)1275068698)
-#define MPI_REAL4 ((MPI_Datatype)0x4c000427)
-#define MPI_REAL8 ((MPI_Datatype)0x4c000829)
-#define MPI_REAL16 ((MPI_Datatype)0x4c00102b)
-#define MPI_COMPLEX8 ((MPI_Datatype)0x4c000828)
-#define MPI_COMPLEX16 ((MPI_Datatype)0x4c00102a)
-#define MPI_COMPLEX32 ((MPI_Datatype)0x4c00202c)
-#define MPI_INTEGER1 ((MPI_Datatype)0x4c00012d)
-#define MPI_INTEGER2 ((MPI_Datatype)0x4c00022f)
-#define MPI_INTEGER4 ((MPI_Datatype)0x4c000430)
-#define MPI_INTEGER8 ((MPI_Datatype)0x4c000831)
-#define MPI_INTEGER16 ((MPI_Datatype)MPI_DATATYPE_NULL)
-#define MPI_INT8_T ((MPI_Datatype)0x4c000137)
-#define MPI_INT16_T ((MPI_Datatype)0x4c000238)
-#define MPI_INT32_T ((MPI_Datatype)0x4c000439)
-#define MPI_INT64_T ((MPI_Datatype)0x4c00083a)
-#define MPI_UINT8_T ((MPI_Datatype)0x4c00013b)
-#define MPI_UINT16_T ((MPI_Datatype)0x4c00023c)
-#define MPI_UINT32_T ((MPI_Datatype)0x4c00043d)
-#define MPI_UINT64_T ((MPI_Datatype)0x4c00083e)
-#define MPI_C_BOOL ((MPI_Datatype)0x4c00013f)
-#define MPI_C_FLOAT_COMPLEX ((MPI_Datatype)0x4c000840)
+
+#define MPI_PACKED MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_packed)
+//#define MPI_LB MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_lb)
+//#define MPI_UB MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_ub)
+#define MPI_FLOAT_INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_float_int)
+#define MPI_DOUBLE_INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_double_int)
+#define MPI_LONG_INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_long_int)
+#define MPI_SHORT_INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_short_int)
+#define MPI_2INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_2int)
+#define MPI_LONG_DOUBLE_INT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_long_double_int)
+#define MPI_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_complex)
+#define MPI_DOUBLE_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_double_complex)
+#define MPI_LOGICAL MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_logical)
+#define MPI_REAL MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_real)
+#define MPI_DOUBLE_PRECISION MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_double_precision)
+#define MPI_INTEGER MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_integer)
+#define MPI_2INTEGER MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_2integer)
+#define MPI_2REAL MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_2real)
+#define MPI_2DOUBLE_PRECISION MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_2double_precision)
+#define MPI_CHARACTER MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_character)
+//#define MPI_REAL4 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_real4)
+//#define MPI_REAL8 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_real8)
+//#define MPI_REAL16 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_real16)
+//#define MPI_COMPLEX8 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_complex8)
+//#define MPI_COMPLEX16 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_complex16)
+//#define MPI_COMPLEX32 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_complex32)
+//#define MPI_INTEGER1 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_integer1)
+//#define MPI_INTEGER2 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_integer2)
+//#define MPI_INTEGER4 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_integer4)
+//#define MPI_INTEGER8 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_integer8)
+//#define MPI_INTEGER16 MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_integer16)
+#define MPI_INT8_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_int8_t)
+#define MPI_INT16_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_int16_t)
+#define MPI_INT32_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_int32_t)
+#define MPI_INT64_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_int64_t)
+#define MPI_UINT8_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_uint8_t)
+#define MPI_UINT16_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_uint16_t)
+#define MPI_UINT32_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_uint32_t)
+#define MPI_UINT64_T MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_uint64_t)
+#define MPI_C_BOOL MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_c_bool)
+#define MPI_C_FLOAT_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_c_float_complex)
 #define MPI_C_COMPLEX MPI_C_FLOAT_COMPLEX
-#define MPI_C_DOUBLE_COMPLEX ((MPI_Datatype)0x4c001041)
-#define MPI_C_LONG_DOUBLE_COMPLEX ((MPI_Datatype)0x4c002042)
-#define MPI_AINT ((MPI_Datatype)0x4c000843)
-#define MPI_OFFSET ((MPI_Datatype)0x4c000844)
-#define MPI_COUNT ((MPI_Datatype)0x4c000845)
-#define MPI_CXX_BOOL ((MPI_Datatype)0x4c000133)
-#define MPI_CXX_FLOAT_COMPLEX ((MPI_Datatype)0x4c000834)
-#define MPI_CXX_DOUBLE_COMPLEX ((MPI_Datatype)0x4c001035)
-#define MPI_CXX_LONG_DOUBLE_COMPLEX ((MPI_Datatype)0x4c002036)*/
+#define MPI_C_DOUBLE_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_c_double_complex)
+#define MPI_C_LONG_DOUBLE_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_c_long_double_complex)
+#define MPI_AINT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_aint)
+#define MPI_OFFSET MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_offset)
+#define MPI_COUNT MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_count)
+#define MPI_CXX_BOOL MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_cxx_bool)
+#define MPI_CXX_FLOAT_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_cxx_float_complex)
+#define MPI_CXX_DOUBLE_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_cxx_double_complex)
+#define MPI_CXX_LONG_DOUBLE_COMPLEX MPI_FT_PREDEFINED_GLOBAL(MPI_Datatype, mpi_ft_datatype_cxx_long_double_complex)
+
 #define MPI_TYPECLASS_REAL 1
 #define MPI_TYPECLASS_INTEGER 2
 #define MPI_TYPECLASS_COMPLEX 3
