@@ -1,0 +1,318 @@
+#!/bin/bash
+#PBS -N ompijob
+###PBS -l nodes=16:ppn=32,walltime=12:00:00
+###PBS -l nodes=node3:ppn=32+node5:ppn=32+node8:ppn=32+node9:ppn=32+node10:ppn=32+node12:ppn=32+node14:ppn=32+node16:ppn=32+node17:ppn=32+node18:ppn=32+node19:ppn=32+node20:ppn=32+node21:ppn=32+node22:ppn=32+node25:ppn=32+node29:ppn=32,walltime=12:00:00
+#PBS -l nodes=16:ppn=32,walltime=24:00:00
+#PBS -q hpq_1day_large
+###PBS -q qreg_1day_small
+###PBS -e errorompi.log
+###PBS -o outputompi.log
+#PBS -j oe
+###export UCX_TLS=self,sm,ud
+###export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+cd $PBS_O_WORKDIR
+cat $PBS_NODEFILE > pbs_nodes
+awk '!seen[$0]++' pbs_nodes > pbs_nodesuniq
+awk '{print; print;}' pbs_nodesuniq > pbs_nodes16
+awk '{print; print; print; print;}' pbs_nodesuniq > pbs_nodes32
+awk '{print; print; print; print; print; print; print; print;}' pbs_nodesuniq > pbs_nodes64
+awk '{print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print;}' pbs_nodesuniq > pbs_nodes128
+awk '{print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print;}' pbs_nodesuniq > pbs_nodes256
+awk '{print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print; print;}' pbs_nodesuniq > pbs_nodes512
+NPROCS=`wc -l < $PBS_NODEFILE`
+NNODES=`uniq $PBS_NODEFILE | wc -l`
+export MV2_ENABLE_AFFINITY=0
+export LD_LIBRARY_PATH=/home/phd/21/cdsjsar/MVAPICH2/lib:/usr/local/lib:/usr/local/lib64:/usr/lib:/usr/lib64:$LD_LIBRARY_PATH
+### Display the job context
+echo Running on host `hostname`
+echo Time is `date`
+echo Directory is `pwd`
+echo Using ${NPROCS} processors across ${NNODES} nodes
+
+###256+256 runs
+export COMP_PER_REP=1
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is1512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is2512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is3512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is4512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is5512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep1512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep2512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep3512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep4512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep5512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg1512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg2512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg3512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg4512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg5512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg1512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg2512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg3512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg4512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg5512
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt1484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt2484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt3484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt4484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt5484
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu1512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu2512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu3512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu4512
+
+mpirun -np 512 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu5512
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp1484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp2484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp3484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp4484
+
+mpirun -np 484 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp5484
+
+###256 runs
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is5256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep5256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg5256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg5256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt5256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu5256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp1256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp2256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp3256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp4256
+
+mpirun -np 256 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp5256
+
+###128 runs
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is1128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is2128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is3128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is4128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is5128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep1128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep2128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep3128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep4128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep5128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg1128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg2128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg3128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg4128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg5128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg1128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg2128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg3128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg4128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg5128
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt1121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt2121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt3121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt4121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt5121
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu1128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu2128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu3128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu4128
+
+mpirun -np 128 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu5128
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp1121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp2121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp3121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp4121
+
+mpirun -np 121 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp5121
+
+###64 runs
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/is.E.x >> is564
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/ep.D.x >> ep564
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/cg.B.x >> cg564
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/mg.D.x >> mg564
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/bt.A.x >> bt564
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/lu.B.x >> lu564
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp164
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp264
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp364
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp464
+
+mpirun -np 64 --hostfile $PBS_NODEFILE /home/phd/21/cdsjsar/Adaptive_Replication/NPB3.4.2-RNC/NPB3.4-MPI/bin/sp.A.x >> sp564

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+export DYN_CONNECT=1
+export PAREP_MPI_WORKDIR=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi
+export LD_LIBRARY_PATH=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/lib:$LD_LIBRARY_PATH
+
+/home/phd/21/cdsjsar/MVAPICH2/bin/mpirun $@ &
+
+/home/phd/21/cdsjsar/openMPI/bin/mpirun --with-ft ulfm $@
+
+rm -R /home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/connection/*
+rm -R /home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/logs/*
+for f in /home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/tempwpid_*; do mv "$f" "$(echo "$f" | sed s/tempwpid/waitpid/)"; done
