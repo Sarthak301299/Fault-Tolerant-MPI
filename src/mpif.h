@@ -5,6 +5,11 @@ module mpif
         use iso_c_binding
         implicit none
 				
+				real(c_double), bind(C) :: mpi_ft_start_time
+				real(c_double), bind(C) :: mpi_ft_end_time
+				
+				integer(c_int), bind(C) :: parep_mpi_fortran_binding_used
+				
 				integer,parameter :: MPI_Status_size = 5
 				integer,parameter,dimension(MPI_Status_size) :: MPI_STATUS_IGNORE = (/-1,-1,-1,-1,-1/)
 				
@@ -48,7 +53,8 @@ module mpif
 				integer,parameter :: MPI_REAL = 12
 				!integer,parameter :: MPI_DOUBLE_PRECISION = 30
 				integer,parameter :: MPI_DOUBLE_PRECISION = 13
-				integer,parameter :: MPI_INTEGER = 31
+				!integer,parameter :: MPI_INTEGER = 31
+				integer,parameter :: MPI_INTEGER = 8
 				integer,parameter :: MPI_2INTEGER = 32
 				integer,parameter :: MPI_2REAL = 33
 				integer,parameter :: MPI_2DOUBLE_PRECISION = 34
@@ -102,13 +108,9 @@ module mpif
 				
 				integer,parameter :: MPI_ERR_OTHER = 15
 				
+				logical :: initialized
+				
 				type, bind(C) :: mpi_ft_comm
-					type(c_ptr) :: oworldComm
-					type(c_ptr) :: OMPI_COMM_CMP
-					type(c_ptr) :: OMPI_COMM_REP
-					type(c_ptr) :: OMPI_CMP_REP_INTERCOMM
-					type(c_ptr) :: OMPI_CMP_NO_REP
-					type(c_ptr) :: OMPI_CMP_NO_REP_INTERCOMM
 					type(c_ptr) :: eworldComm
 					type(c_ptr) :: EMPI_COMM_CMP
 					type(c_ptr) :: EMPI_COMM_REP
@@ -117,18 +119,21 @@ module mpif
 					type(c_ptr) :: EMPI_CMP_NO_REP_INTERCOMM
 				end type mpi_ft_comm
 				type, bind(C) :: mpi_ft_datatype
-					type(c_ptr) :: odatatype
 					type(c_ptr) :: edatatype
 					integer(c_int) :: size
 				end type mpi_ft_datatype
 				type, bind(C) :: mpi_ft_op
-					type(c_ptr) :: oop
 					type(c_ptr) :: eop
 				end type mpi_ft_op
+				type, bind(C) :: EMPI_Status
+					integer(c_int) :: count_lo
+					integer(c_int) :: count_hi_and_cancelled
+					integer(c_int) :: MPI_SOURCE
+					integer(c_int) :: MPI_TAG
+					integer(c_int) :: MPI_ERROR
+				end type EMPI_Status
 				type, bind(C) :: mpi_ft_status
-					type(c_ptr) :: status
-					type(c_ptr) :: tmpptr
-					integer(c_int) :: tmpint
+					type(EMPI_Status) :: status
 					integer(c_int) :: count
 					integer(c_int) :: MPI_SOURCE
 					integer(c_int) :: MPI_TAG
@@ -137,22 +142,25 @@ module mpif
 				type, bind(C) :: mpi_ft_request
 					type(c_ptr) :: reqcmp
 					type(c_ptr) :: reqrep
+					type(c_ptr) :: reqcolls
+					integer(c_int) :: num_reqcolls
 					logical(c_bool) :: complete
 					type(mpi_ft_comm) :: comm
 					type(mpi_ft_status) :: status
 					integer(c_int) :: type
 					type(c_ptr) :: bufloc
-					!type(c_ptr) :: backup
-					!type(c_ptr) :: backuploc
 					type(c_ptr) :: storeloc
+					type(c_ptr) :: rnode
 				end type mpi_ft_request
 				
 				type :: mpi_ft_request_ptr
 					type(c_ptr), pointer :: p
 				end type mpi_ft_request_ptr
-				!type(mpi_ft_request_ptr), dimension(1024) :: reqarr
-				type(c_ptr),target, dimension(1024) :: reqarr
-				logical, dimension(1024) :: reqinuse
+				
+				!type(c_ptr),target, dimension(1024) :: reqarr
+				type(c_ptr),bind(C),target,dimension(1024) :: reqarr
+				!logical, dimension(1024) :: reqinuse
+				logical(c_bool),bind(C),dimension(1024) :: reqinuse
 				
 				type(mpi_ft_op),bind(C),target :: mpi_ft_op_null
 				type(mpi_ft_datatype),bind(C),target :: mpi_ft_datatype_null
@@ -241,21 +249,27 @@ module mpif
 				type(mpi_ft_op),bind(C),target :: mpi_ft_op_replace
 				type(mpi_ft_op),bind(C),target :: mpi_ft_op_no_op
 				
-				type :: mpi_ft_comm_ptr
-					type(mpi_ft_comm), pointer :: p
-				end type mpi_ft_comm_ptr
-				type :: mpi_ft_datatype_ptr
-					type(mpi_ft_datatype), pointer :: p
-				end type mpi_ft_datatype_ptr
-				type :: mpi_ft_op_ptr
-					type(mpi_ft_op), pointer :: p
-				end type mpi_ft_op_ptr
+				!type,bind(C) :: mpi_ft_comm_ptr
+					!type(mpi_ft_datatype) :: p
+				!end type mpi_ft_comm_ptr
+				!type,bind(C) :: mpi_ft_datatype_ptr
+					!type(mpi_ft_datatype), pointer :: p
+				!end type mpi_ft_datatype_ptr
+				!type,bind(C) :: mpi_ft_op_ptr
+					!type(mpi_ft_op), pointer :: p
+				!end type mpi_ft_op_ptr
 				
-				type(mpi_ft_comm_ptr), dimension(1024) :: commarr
-				type(mpi_ft_datatype_ptr), dimension(1024) :: dtarr
-				type(mpi_ft_op_ptr), dimension(1024) :: oparr
+				!type(mpi_ft_comm_ptr), dimension(1024) :: commarr
+				!type(mpi_ft_datatype_ptr), dimension(1024) :: dtarr
+				!type(mpi_ft_op_ptr), dimension(1024) :: oparr
 				
+				!type(mpi_ft_comm_ptr),bind(C),dimension(1024) :: commarr
+				!type(mpi_ft_datatype_ptr),bind(C),dimension(1024) :: dtarr
+				!type(mpi_ft_op_ptr),bind(C),dimension(1024) :: oparr
 				
+				type(c_ptr),bind(C),target,dimension(1024) :: commarr
+				type(c_ptr),bind(C),target,dimension(1024) :: dtarr
+				type(c_ptr),bind(C),target,dimension(1024) :: oparr
 				
         interface mpi_finalize_interface
                 function mpi_finalize_c() bind(C,name="MPI_Finalize")
@@ -275,7 +289,7 @@ module mpif
         interface mpi_comm_size_interface
                 function mpi_comm_size_c(comm, size) bind(C,name="MPI_Comm_size")
                         import :: c_int,c_ptr,mpi_ft_comm
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
                         integer(c_int), intent(inout) :: size
                         integer(c_int) :: mpi_comm_size_c
                 end function mpi_comm_size_c
@@ -284,7 +298,7 @@ module mpif
         interface mpi_comm_rank_interface
                 function mpi_comm_rank_c(comm, rank) bind(C,name="MPI_Comm_rank")
                         import :: c_int,c_ptr,mpi_ft_comm
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
                         integer(c_int), intent(inout) :: rank
                         integer(c_int) :: mpi_comm_rank_c
                 end function mpi_comm_rank_c
@@ -295,10 +309,10 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value, intent(in) :: buf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: datatype
 												integer(c_int), intent(in), value :: dest
 												integer(c_int), intent(in), value :: tag
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_send_c
                 end function mpi_send_c
         end interface mpi_send_interface
@@ -308,10 +322,10 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm,mpi_ft_request
 												type(c_ptr), value, intent(in) :: buf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: datatype
 												integer(c_int), intent(in), value :: dest
 												integer(c_int), intent(in), value :: tag
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												type(c_ptr),value :: request
 												integer(c_int) :: mpi_isend_c
                 end function mpi_isend_c
@@ -322,10 +336,10 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm,mpi_ft_status
 												type(c_ptr), value :: buf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: datatype
 												integer(c_int), intent(in), value :: src
 												integer(c_int), intent(in), value :: tag
-												type(mpi_ft_comm),intent(in) :: comm
+												type(c_ptr), value, intent(in) :: comm
 												type(mpi_ft_status) :: status
 												integer(c_int) :: mpi_recv_c
                 end function mpi_recv_c
@@ -336,10 +350,10 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm,mpi_ft_request
 												type(c_ptr), value :: buf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: datatype
 												integer(c_int), intent(in), value :: src
 												integer(c_int), intent(in), value :: tag
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												type(c_ptr),value :: request
 												integer(c_int) :: mpi_irecv_c
                 end function mpi_irecv_c
@@ -377,9 +391,9 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value :: buf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: datatype
 												integer(c_int), intent(in), value :: root
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_bcast_c
                 end function mpi_bcast_c
         end interface mpi_bcast_interface
@@ -389,9 +403,9 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in), value :: sendcount,recvcount
-												type(mpi_ft_datatype), intent(in) :: sendtype,recvtype
+												type(c_ptr), value, intent(in) :: sendtype,recvtype
 												integer(c_int), intent(in), value :: root
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_scatter_c
                 end function mpi_scatter_c
         end interface mpi_scatter_interface
@@ -401,9 +415,9 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in), value :: sendcount,recvcount
-												type(mpi_ft_datatype), intent(in) :: sendtype,recvtype
+												type(c_ptr), value, intent(in) :: sendtype,recvtype
 												integer(c_int), intent(in), value :: root
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_gather_c
                 end function mpi_gather_c
         end interface mpi_gather_interface
@@ -413,10 +427,10 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm,mpi_ft_op
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
-												type(mpi_ft_op), intent(in) :: op
+												type(c_ptr), value, intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: op
 												integer(c_int), intent(in), value :: root
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_reduce_c
                 end function mpi_reduce_c
         end interface mpi_reduce_interface
@@ -426,8 +440,8 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in), value :: sendcount,recvcount
-												type(mpi_ft_datatype), intent(in) :: sendtype,recvtype
-                        type(mpi_ft_comm),intent(in) :: comm
+												type(c_ptr), value, intent(in) :: sendtype,recvtype
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_allgather_c
                 end function mpi_allgather_c
         end interface mpi_allgather_interface
@@ -437,8 +451,8 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in), value :: sendcount,recvcount
-												type(mpi_ft_datatype), intent(in) :: sendtype,recvtype
-                        type(mpi_ft_comm),intent(in) :: comm
+												type(c_ptr), value, intent(in) :: sendtype,recvtype
+                        type(c_ptr), value,intent(in) :: comm
 												integer(c_int) :: mpi_alltoall_c
                 end function mpi_alltoall_c
         end interface mpi_alltoall_interface
@@ -448,9 +462,9 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm,mpi_ft_op
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in), value :: count
-												type(mpi_ft_datatype), intent(in) :: datatype
-												type(mpi_ft_op), intent(in) :: op
-                        type(mpi_ft_comm),intent(in) :: comm
+												type(c_ptr), value, intent(in) :: datatype
+												type(c_ptr), value, intent(in) :: op
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_allreduce_c
                 end function mpi_allreduce_c
         end interface mpi_allreduce_interface
@@ -462,8 +476,8 @@ module mpif
                         import :: c_int,c_ptr,mpi_ft_datatype,mpi_ft_comm
 												type(c_ptr), value :: sendbuf,recvbuf
 												integer(c_int), intent(in) :: sendcounts,recvcounts,sdispls,rdispls
-												type(mpi_ft_datatype), intent(in) :: sendtype,recvtype
-                        type(mpi_ft_comm),intent(in) :: comm
+												type(c_ptr), value, intent(in) :: sendtype,recvtype
+                        type(c_ptr), value, intent(in) :: comm
 												integer(c_int) :: mpi_alltoallv_c
                 end function mpi_alltoallv_c
         end interface mpi_alltoallv_interface
@@ -471,7 +485,7 @@ module mpif
 				interface mpi_barrier_interface
                 function mpi_barrier_c(comm) bind(C,name="MPI_Barrier")
                         import :: c_int,c_ptr,mpi_ft_comm
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
                         integer(c_int) :: mpi_barrier_c
                 end function mpi_barrier_c
         end interface mpi_barrier_interface
@@ -479,7 +493,7 @@ module mpif
 				interface mpi_abort_interface
                 function mpi_abort_c(comm, errorcode) bind(C,name="MPI_Abort")
                         import :: c_int,c_ptr,mpi_ft_comm
-                        type(mpi_ft_comm),intent(in) :: comm
+                        type(c_ptr), value, intent(in) :: comm
                         integer(c_int), value :: errorcode
                         integer(c_int) :: mpi_abort_c
                 end function mpi_abort_c
@@ -492,152 +506,175 @@ module mpif
                 end function mpi_wtime_c
         end interface mpi_wtime_interface
 				
+				interface parep_mpi_fortran_preinit_interface
+					subroutine parep_mpi_fortran_preinit() bind(C,name="parep_mpi_fortran_preinit")
+					end subroutine parep_mpi_fortran_preinit
+				end interface parep_mpi_fortran_preinit_interface
+					
+				interface parep_mpi_fortran_postfinalize_interface
+					subroutine parep_mpi_fortran_postfinalize() bind(C,name="parep_mpi_fortran_postfinalize")
+					end subroutine parep_mpi_fortran_postfinalize
+				end interface parep_mpi_fortran_postfinalize_interface
+				
 	contains
 	
 	subroutine mpi_finalize(ierror)
 		integer, intent(out) :: ierror
 		ierror = mpi_finalize_c()
+		initialized = .false.
+		call parep_mpi_fortran_postfinalize()
 	end subroutine mpi_finalize
 	
 	subroutine mpi_init(ierror)
 		integer, intent(out) :: ierror
 		integer i
 		type(c_ptr) :: null_req
+		call parep_mpi_fortran_preinit()
+		
+		parep_mpi_fortran_binding_used = 1
 		ierror = mpi_init_c(0,c_null_ptr)
-		commarr(1)%p => mpi_ft_comm_null
-		commarr(2)%p => mpi_ft_comm_world
-		commarr(3)%p => mpi_ft_comm_self
+		commarr(1) = c_loc(mpi_ft_comm_null)
+		commarr(2) = c_loc(mpi_ft_comm_world)
+		commarr(3) = c_loc(mpi_ft_comm_self)
 
-		dtarr(1)%p => mpi_ft_datatype_null
-		dtarr(2)%p => mpi_ft_datatype_char
-		dtarr(3)%p => mpi_ft_datatype_signed_char
-		dtarr(4)%p => mpi_ft_datatype_unsigned_char
-		dtarr(5)%p => mpi_ft_datatype_byte
-		dtarr(6)%p => mpi_ft_datatype_short
-		dtarr(7)%p => mpi_ft_datatype_unsigned_short
-		dtarr(8)%p => mpi_ft_datatype_int
-		dtarr(9)%p => mpi_ft_datatype_unsigned
-		dtarr(10)%p => mpi_ft_datatype_long
-		dtarr(11)%p => mpi_ft_datatype_unsigned_long
-		dtarr(12)%p => mpi_ft_datatype_float
-		dtarr(13)%p => mpi_ft_datatype_double
-		dtarr(14)%p => mpi_ft_datatype_long_double
-		dtarr(15)%p => mpi_ft_datatype_long_long_int
-		dtarr(16)%p => mpi_ft_datatype_unsigned_long_long
+		dtarr(1) = c_loc(mpi_ft_datatype_null)
+		dtarr(2) = c_loc(mpi_ft_datatype_char)
+		dtarr(3) = c_loc(mpi_ft_datatype_signed_char)
+		dtarr(4) = c_loc(mpi_ft_datatype_unsigned_char)
+		dtarr(5) = c_loc(mpi_ft_datatype_byte)
+		dtarr(6) = c_loc(mpi_ft_datatype_short)
+		dtarr(7) = c_loc(mpi_ft_datatype_unsigned_short)
+		dtarr(8) = c_loc(mpi_ft_datatype_int)
+		dtarr(9) = c_loc(mpi_ft_datatype_unsigned)
+		dtarr(10) = c_loc(mpi_ft_datatype_long)
+		dtarr(11) = c_loc(mpi_ft_datatype_unsigned_long)
+		dtarr(12) = c_loc(mpi_ft_datatype_float)
+		dtarr(13) = c_loc(mpi_ft_datatype_double)
+		dtarr(14) = c_loc(mpi_ft_datatype_long_double)
+		dtarr(15) = c_loc(mpi_ft_datatype_long_long_int)
+		dtarr(16) = c_loc(mpi_ft_datatype_unsigned_long_long)
 		
-		dtarr(17)%p => mpi_ft_datatype_packed
-		!dtarr(18)%p => mpi_ft_datatype_lb
-		!dtarr(19)%p => mpi_ft_datatype_ub
-		dtarr(20)%p => mpi_ft_datatype_float_int
-		dtarr(21)%p => mpi_ft_datatype_double_int
-		dtarr(22)%p => mpi_ft_datatype_long_int
-		dtarr(23)%p => mpi_ft_datatype_short_int
-		dtarr(24)%p => mpi_ft_datatype_2int
-		dtarr(25)%p => mpi_ft_datatype_long_double_int
-		dtarr(26)%p => mpi_ft_datatype_complex
-		dtarr(27)%p => mpi_ft_datatype_double_complex
-		dtarr(28)%p => mpi_ft_datatype_logical
-		dtarr(29)%p => mpi_ft_datatype_real
-		dtarr(30)%p => mpi_ft_datatype_double_precision
-		dtarr(31)%p => mpi_ft_datatype_integer
-		dtarr(32)%p => mpi_ft_datatype_2integer
-		dtarr(33)%p => mpi_ft_datatype_2real
-		dtarr(34)%p => mpi_ft_datatype_2double_precision
-		dtarr(35)%p => mpi_ft_datatype_character
-		!dtarr(36)%p => mpi_ft_datatype_real4
-		!dtarr(37)%p => mpi_ft_datatype_real8
-		!dtarr(38)%p => mpi_ft_datatype_real16
-		!dtarr(39)%p => mpi_ft_datatype_complex8
-		!dtarr(40)%p => mpi_ft_datatype_complex16
-		!dtarr(41)%p => mpi_ft_datatype_complex32
-		!dtarr(42)%p => mpi_ft_datatype_integer1
-		!dtarr(43)%p => mpi_ft_datatype_integer2
-		!dtarr(44)%p => mpi_ft_datatype_integer4
-		!dtarr(45)%p => mpi_ft_datatype_integer8
-		!dtarr(46)%p => mpi_ft_datatype_integer16
-		dtarr(47)%p => mpi_ft_datatype_int8_t
-		dtarr(48)%p => mpi_ft_datatype_int16_t
-		dtarr(49)%p => mpi_ft_datatype_int32_t
-		dtarr(50)%p => mpi_ft_datatype_int64_t
-		dtarr(51)%p => mpi_ft_datatype_uint8_t
-		dtarr(52)%p => mpi_ft_datatype_uint16_t
-		dtarr(53)%p => mpi_ft_datatype_uint32_t
-		dtarr(54)%p => mpi_ft_datatype_uint64_t
-		dtarr(55)%p => mpi_ft_datatype_c_bool
-		dtarr(56)%p => mpi_ft_datatype_c_float_complex
-		dtarr(57)%p => mpi_ft_datatype_c_double_complex
-		dtarr(58)%p => mpi_ft_datatype_c_long_double_complex
-		dtarr(59)%p => mpi_ft_datatype_aint
-		dtarr(60)%p => mpi_ft_datatype_offset
-		dtarr(61)%p => mpi_ft_datatype_count
-		dtarr(62)%p => mpi_ft_datatype_cxx_bool
-		dtarr(63)%p => mpi_ft_datatype_cxx_float_complex
-		dtarr(64)%p => mpi_ft_datatype_cxx_double_complex
-		dtarr(65)%p => mpi_ft_datatype_cxx_long_double_complex
+		dtarr(17) = c_loc(mpi_ft_datatype_packed)
+		!dtarr(18) = c_loc(mpi_ft_datatype_lb)
+		!dtarr(19) = c_loc(mpi_ft_datatype_ub)
+		dtarr(20) = c_loc(mpi_ft_datatype_float_int)
+		dtarr(21) = c_loc(mpi_ft_datatype_double_int)
+		dtarr(22) = c_loc(mpi_ft_datatype_long_int)
+		dtarr(23) = c_loc(mpi_ft_datatype_short_int)
+		dtarr(24) = c_loc(mpi_ft_datatype_2int)
+		dtarr(25) = c_loc(mpi_ft_datatype_long_double_int)
+		dtarr(26) = c_loc(mpi_ft_datatype_complex)
+		dtarr(27) = c_loc(mpi_ft_datatype_double_complex)
+		dtarr(28) = c_loc(mpi_ft_datatype_logical)
+		dtarr(29) = c_loc(mpi_ft_datatype_real)
+		dtarr(30) = c_loc(mpi_ft_datatype_double_precision)
+		dtarr(31) = c_loc(mpi_ft_datatype_integer)
+		dtarr(32) = c_loc(mpi_ft_datatype_2integer)
+		dtarr(33) = c_loc(mpi_ft_datatype_2real)
+		dtarr(34) = c_loc(mpi_ft_datatype_2double_precision)
+		dtarr(35) = c_loc(mpi_ft_datatype_character)
+		!dtarr(36) = c_loc(mpi_ft_datatype_real4)
+		!dtarr(37) = c_loc(mpi_ft_datatype_real8)
+		!dtarr(38) = c_loc(mpi_ft_datatype_real16)
+		!dtarr(39) = c_loc(mpi_ft_datatype_complex8)
+		!dtarr(40) = c_loc(mpi_ft_datatype_complex16)
+		!dtarr(41) = c_loc(mpi_ft_datatype_complex32)
+		!dtarr(42) = c_loc(mpi_ft_datatype_integer1)
+		!dtarr(43) = c_loc(mpi_ft_datatype_integer2)
+		!dtarr(44) = c_loc(mpi_ft_datatype_integer4)
+		!dtarr(45) = c_loc(mpi_ft_datatype_integer8)
+		!dtarr(46) = c_loc(mpi_ft_datatype_integer16)
+		dtarr(47) = c_loc(mpi_ft_datatype_int8_t)
+		dtarr(48) = c_loc(mpi_ft_datatype_int16_t)
+		dtarr(49) = c_loc(mpi_ft_datatype_int32_t)
+		dtarr(50) = c_loc(mpi_ft_datatype_int64_t)
+		dtarr(51) = c_loc(mpi_ft_datatype_uint8_t)
+		dtarr(52) = c_loc(mpi_ft_datatype_uint16_t)
+		dtarr(53) = c_loc(mpi_ft_datatype_uint32_t)
+		dtarr(54) = c_loc(mpi_ft_datatype_uint64_t)
+		dtarr(55) = c_loc(mpi_ft_datatype_c_bool)
+		dtarr(56) = c_loc(mpi_ft_datatype_c_float_complex)
+		dtarr(57) = c_loc(mpi_ft_datatype_c_double_complex)
+		dtarr(58) = c_loc(mpi_ft_datatype_c_long_double_complex)
+		dtarr(59) = c_loc(mpi_ft_datatype_aint)
+		dtarr(60) = c_loc(mpi_ft_datatype_offset)
+		dtarr(61) = c_loc(mpi_ft_datatype_count)
+		dtarr(62) = c_loc(mpi_ft_datatype_cxx_bool)
+		dtarr(63) = c_loc(mpi_ft_datatype_cxx_float_complex)
+		dtarr(64) = c_loc(mpi_ft_datatype_cxx_double_complex)
+		dtarr(65) = c_loc(mpi_ft_datatype_cxx_long_double_complex)
 		
-		oparr(1)%p => mpi_ft_op_null
-		oparr(2)%p => mpi_ft_op_max
-		oparr(3)%p => mpi_ft_op_min
-		oparr(4)%p => mpi_ft_op_sum
-		oparr(5)%p => mpi_ft_op_prod
-		oparr(6)%p => mpi_ft_op_land
-		oparr(7)%p => mpi_ft_op_band
-		oparr(8)%p => mpi_ft_op_lor
-		oparr(9)%p => mpi_ft_op_bor
-		oparr(10)%p => mpi_ft_op_lxor
-		oparr(11)%p => mpi_ft_op_bxor
-		oparr(12)%p => mpi_ft_op_minloc
-		oparr(13)%p => mpi_ft_op_maxloc
-		oparr(14)%p => mpi_ft_op_replace
-		oparr(15)%p => mpi_ft_op_no_op
+		oparr(1) = c_loc(mpi_ft_op_null)
+		oparr(2) = c_loc(mpi_ft_op_max)
+		oparr(3) = c_loc(mpi_ft_op_min)
+		oparr(4) = c_loc(mpi_ft_op_sum)
+		oparr(5) = c_loc(mpi_ft_op_prod)
+		oparr(6) = c_loc(mpi_ft_op_land)
+		oparr(7) = c_loc(mpi_ft_op_band)
+		oparr(8) = c_loc(mpi_ft_op_lor)
+		oparr(9) = c_loc(mpi_ft_op_bor)
+		oparr(10) = c_loc(mpi_ft_op_lxor)
+		oparr(11) = c_loc(mpi_ft_op_bxor)
+		oparr(12) = c_loc(mpi_ft_op_minloc)
+		oparr(13) = c_loc(mpi_ft_op_maxloc)
+		oparr(14) = c_loc(mpi_ft_op_replace)
+		oparr(15) = c_loc(mpi_ft_op_no_op)
 		null_req = c_loc(mpi_ft_request_null)
 		reqarr(1) = null_req
 		reqinuse(1) = .true.
 		do i = 2, 1024
 			reqinuse(i) = .false.
 		end do
+		initialized = .true.
 	end subroutine mpi_init
+	
+	subroutine mpi_initialized(flag,ierror)
+		integer, intent(out) :: ierror
+		logical :: flag
+		flag = initialized
+		ierror = 0
+	end subroutine mpi_initialized
 	
 	subroutine mpi_comm_size(comm,size,ierror)
 		integer, intent(out) :: ierror
 		integer :: comm
 		integer(c_int), intent(inout) :: size
-		type(mpi_ft_comm_ptr),target :: ccomm
+		type(c_ptr) :: ccomm
 		ccomm = commarr(comm)
-		ierror = mpi_comm_size_c(ccomm%p,size)
+		ierror = mpi_comm_size_c(ccomm,size)
 	end subroutine mpi_comm_size
 	
 	subroutine mpi_comm_rank(comm,rank,ierror)
 		integer, intent(out) :: ierror
 		integer :: comm
 		integer(c_int), intent(inout) :: rank
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		ccomm = commarr(comm)
-		ierror = mpi_comm_rank_c(ccomm%p,rank)
+		ierror = mpi_comm_rank_c(ccomm,rank)
 	end subroutine mpi_comm_rank
 	
 	subroutine mpi_send(buf,count,datatype,dest,tag,comm,ierror)
 		type(*), dimension(..), target, intent(in) :: buf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
+		type(c_ptr) :: cdatatype
 		integer(c_int), intent(in), value :: dest
 		integer(c_int), intent(in), value :: tag
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer :: comm
 		integer :: datatype
 		integer, intent(out) :: ierror
 		ccomm = commarr(comm)
 		cdatatype = dtarr(datatype)
-		ierror = mpi_send_c(c_loc(buf),count,cdatatype%p,dest,tag,ccomm%p)
+		ierror = mpi_send_c(c_loc(buf),count,cdatatype,dest,tag,ccomm)
 	end subroutine mpi_send
 	
 	subroutine mpi_isend(buf,count,datatype,dest,tag,comm,request,ierror)
 		type(*), dimension(..), target, intent(in) :: buf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
+		type(c_ptr) :: cdatatype
 		integer(c_int), intent(in), value :: dest
 		integer(c_int), intent(in), value :: tag
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer :: request
 		integer :: comm,datatype
 		integer i
@@ -653,23 +690,23 @@ module mpif
         			exit
 			end if
 		end do
-		ierror = mpi_isend_c(c_loc(buf),count,cdatatype%p,dest,tag,ccomm%p,req)
+		ierror = mpi_isend_c(c_loc(buf),count,cdatatype,dest,tag,ccomm,req)
 	end subroutine mpi_isend
 	
 	subroutine mpi_recv(buf,count,datatype,src,tag,comm,status,ierror)
 		type(*), dimension(..), target :: buf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
+		type(c_ptr) :: cdatatype
 		integer(c_int), intent(in), value :: src
 		integer(c_int), intent(in), value :: tag
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer, dimension(MPI_Status_size) :: status
 		integer, intent(out) :: ierror
 		type(mpi_ft_status), target :: stat
 		integer :: comm,datatype
 		ccomm = commarr(comm)
 		cdatatype = dtarr(datatype)
-		ierror = mpi_recv_c(c_loc(buf),count,cdatatype%p,src,tag,ccomm%p,stat)
+		ierror = mpi_recv_c(c_loc(buf),count,cdatatype,src,tag,ccomm,stat)
 		if(status(1) /= -1) then
 			status(1) = stat%count
 			status(2) = stat%count
@@ -682,10 +719,10 @@ module mpif
 	subroutine mpi_irecv(buf,count,datatype,src,tag,comm,request,ierror)
 		type(*), dimension(..), target :: buf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
+		type(c_ptr) :: cdatatype
 		integer(c_int), intent(in), value :: src
 		integer(c_int), intent(in), value :: tag
-		type(mpi_ft_comm_ptr),target :: ccomm
+		type(c_ptr),target :: ccomm
 		integer :: request
 		integer, intent(out) :: ierror
 		type(c_ptr), target :: req
@@ -702,7 +739,7 @@ module mpif
 			end if
 		end do
 		!print *,"Fortran Irecv req loc ",c_loc(req)
-		ierror = mpi_irecv_c(c_loc(buf),count,cdatatype%p,src,tag,ccomm%p,req)
+		ierror = mpi_irecv_c(c_loc(buf),count,cdatatype,src,tag,ccomm,req)
 	end subroutine mpi_irecv
 	
 	subroutine mpi_request_free(request,ierror)
@@ -776,130 +813,139 @@ module mpif
 		end do
 	end subroutine mpi_waitall
 	
+	subroutine mpi_get_count(status,datatype,count,ierror)
+		integer, dimension(MPI_Status_size) :: status
+		integer :: datatype
+		integer :: count
+		integer, intent(out) :: ierror
+		count = status(1)
+		ierror = 0
+	end subroutine mpi_get_count
+	
 	subroutine mpi_bcast(buf,count,datatype,root,comm,ierror)
 		type(*), dimension(..), target :: buf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
+		type(c_ptr) :: cdatatype
 		integer(c_int), intent(in), value :: root
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,datatype
 		ccomm = commarr(comm)
 		cdatatype = dtarr(datatype)
-		ierror = mpi_bcast_c(c_loc(buf),count,cdatatype%p,root,ccomm%p)
+		ierror = mpi_bcast_c(c_loc(buf),count,cdatatype,root,ccomm)
 	end subroutine mpi_bcast
 	
 	subroutine mpi_scatter(sendbuf,sendcount,sendtype,recvbuf,recvcount,recvtype,root,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in), value :: sendcount,recvcount
-		type(mpi_ft_datatype_ptr) :: csendtype,crecvtype
+		type(c_ptr) :: csendtype,crecvtype
 		integer(c_int), intent(in), value :: root
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,sendtype,recvtype
 		ccomm = commarr(comm)
 		csendtype = dtarr(sendtype)
 		crecvtype = dtarr(recvtype)
-		ierror = mpi_scatter_c(c_loc(sendbuf),sendcount,csendtype%p,c_loc(recvbuf),recvcount,crecvtype%p,root,ccomm%p)
+		ierror = mpi_scatter_c(c_loc(sendbuf),sendcount,csendtype,c_loc(recvbuf),recvcount,crecvtype,root,ccomm)
 	end subroutine mpi_scatter
 	
 	subroutine mpi_gather(sendbuf,sendcount,sendtype,recvbuf,recvcount,recvtype,root,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in), value :: sendcount,recvcount
-		type(mpi_ft_datatype_ptr) :: csendtype,crecvtype
+		type(c_ptr) :: csendtype,crecvtype
 		integer(c_int), intent(in), value :: root
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,sendtype,recvtype
 		ccomm = commarr(comm)
 		csendtype = dtarr(sendtype)
 		crecvtype = dtarr(recvtype)
-		ierror = mpi_gather_c(c_loc(sendbuf),sendcount,csendtype%p,c_loc(recvbuf),recvcount,crecvtype%p,root,ccomm%p)
+		ierror = mpi_gather_c(c_loc(sendbuf),sendcount,csendtype,c_loc(recvbuf),recvcount,crecvtype,root,ccomm)
 	end subroutine mpi_gather
 	
 	subroutine mpi_reduce(sendbuf,recvbuf,count,datatype,op,root,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
-		type(mpi_ft_op_ptr) :: cop
+		type(c_ptr) :: cdatatype
+		type(c_ptr) :: cop
 		integer(c_int), intent(in), value :: root
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,datatype,op
 		ccomm = commarr(comm)
 		cdatatype = dtarr(datatype)
 		cop = oparr(op)
-		ierror = mpi_reduce_c(c_loc(sendbuf),c_loc(recvbuf),count,cdatatype%p,cop%p,root,ccomm%p)
+		ierror = mpi_reduce_c(c_loc(sendbuf),c_loc(recvbuf),count,cdatatype,cop,root,ccomm)
 	end subroutine mpi_reduce
 	
 	subroutine mpi_allgather(sendbuf,sendcount,sendtype,recvbuf,recvcount,recvtype,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in), value :: sendcount,recvcount
-		type(mpi_ft_datatype_ptr):: csendtype,crecvtype
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr):: csendtype,crecvtype
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,sendtype,recvtype
 		ccomm = commarr(comm)
 		csendtype = dtarr(sendtype)
 		crecvtype = dtarr(recvtype)
-		ierror = mpi_allgather_c(c_loc(sendbuf),sendcount,csendtype%p,c_loc(recvbuf),recvcount,crecvtype%p,ccomm%p)
+		ierror = mpi_allgather_c(c_loc(sendbuf),sendcount,csendtype,c_loc(recvbuf),recvcount,crecvtype,ccomm)
 	end subroutine mpi_allgather
 	
 	subroutine mpi_alltoall(sendbuf,sendcount,sendtype,recvbuf,recvcount,recvtype,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in), value :: sendcount,recvcount
-		type(mpi_ft_datatype_ptr) :: csendtype,crecvtype
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: csendtype,crecvtype
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,sendtype,recvtype
 		ccomm = commarr(comm)
 		csendtype = dtarr(sendtype)
 		crecvtype = dtarr(recvtype)
-		ierror = mpi_alltoall_c(c_loc(sendbuf),sendcount,csendtype%p,c_loc(recvbuf),recvcount,crecvtype%p,ccomm%p)
+		ierror = mpi_alltoall_c(c_loc(sendbuf),sendcount,csendtype,c_loc(recvbuf),recvcount,crecvtype,ccomm)
 	end subroutine mpi_alltoall
 	
 	subroutine mpi_allreduce(sendbuf,recvbuf,count,datatype,op,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in), value :: count
-		type(mpi_ft_datatype_ptr) :: cdatatype
-		type(mpi_ft_op_ptr) :: cop
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: cdatatype
+		type(c_ptr) :: cop
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,datatype,op
 		ccomm = commarr(comm)
 		cdatatype = dtarr(datatype)
 		cop = oparr(op)
-		ierror = mpi_allreduce_c(c_loc(sendbuf),c_loc(recvbuf),count,cdatatype%p,cop%p,ccomm%p)
+		ierror = mpi_allreduce_c(c_loc(sendbuf),c_loc(recvbuf),count,cdatatype,cop,ccomm)
 	end subroutine mpi_allreduce
 	
 	subroutine mpi_alltoallv(sendbuf,sendcounts,sdispls,sendtype,recvbuf,recvcounts,rdispls,recvtype,comm,ierror)
 		type(*), dimension(..), target :: sendbuf,recvbuf
 		integer(c_int), intent(in) :: sendcounts,recvcounts,sdispls,rdispls
-		type(mpi_ft_datatype_ptr) :: csendtype,crecvtype
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: csendtype,crecvtype
+		type(c_ptr) :: ccomm
 		integer, intent(out) :: ierror
 		integer :: comm,sendtype,recvtype
 		ccomm = commarr(comm)
 		csendtype = dtarr(sendtype)
 		crecvtype = dtarr(recvtype)
-		ierror = mpi_alltoallv_c(c_loc(sendbuf),sendcounts,sdispls,csendtype%p,c_loc(recvbuf),recvcounts,rdispls,crecvtype%p,ccomm%p)
+		ierror = mpi_alltoallv_c(c_loc(sendbuf),sendcounts,sdispls,csendtype,c_loc(recvbuf),recvcounts,rdispls,crecvtype,ccomm)
 	end subroutine mpi_alltoallv
 	
 	subroutine mpi_barrier(comm,ierror)
 		integer, intent(out) :: ierror
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer :: comm
 		ccomm = commarr(comm)
-		ierror = mpi_barrier_c(ccomm%p)
+		ierror = mpi_barrier_c(ccomm)
 	end subroutine mpi_barrier
 	
 	subroutine mpi_abort(comm,errorcode,ierror)
 		integer, intent(out) :: ierror
-		type(mpi_ft_comm_ptr) :: ccomm
+		type(c_ptr) :: ccomm
 		integer(c_int), value :: errorcode
 		integer :: comm
 		ccomm = commarr(comm)
-		ierror = mpi_abort_c(ccomm%p,errorcode)
+		ierror = mpi_abort_c(ccomm,errorcode)
 	end subroutine mpi_abort
 	
 	function mpi_wtime()

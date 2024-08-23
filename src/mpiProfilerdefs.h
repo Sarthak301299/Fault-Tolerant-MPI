@@ -3,8 +3,7 @@
 
 #include "typedefs.h"
 #include "declarations.h"
-#include "ompitypedefs.h"
-#include "ompideclarations.h"
+#include "commbuf_cache.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -12,37 +11,27 @@ extern "C" {
 #endif
 
 extern void *extLib;
-extern void *openLib;
 
-struct mpi_ft_datatype{
-  OMPI_Datatype odatatype;
-  EMPI_Datatype edatatype;
-  int size;
+struct mpi_ft_datatype {
+	EMPI_Datatype edatatype;
+	int size;
 };
 //struct mpi_ft_datatype;
 typedef struct mpi_ft_datatype *MPI_Datatype;
 
-struct mpi_ft_comm{
-  OMPI_Comm oworldComm;
-  OMPI_Comm OMPI_COMM_CMP;
-  OMPI_Comm OMPI_COMM_REP;
-  OMPI_Comm OMPI_CMP_REP_INTERCOMM;
-	OMPI_Comm OMPI_CMP_NO_REP;
-	OMPI_Comm OMPI_CMP_NO_REP_INTERCOMM;
-  EMPI_Comm eworldComm;
-  EMPI_Comm EMPI_COMM_CMP;
-  EMPI_Comm EMPI_COMM_REP;
-  EMPI_Comm EMPI_CMP_REP_INTERCOMM;
+struct mpi_ft_comm {
+	EMPI_Comm eworldComm;
+	EMPI_Comm EMPI_COMM_CMP;
+	EMPI_Comm EMPI_COMM_REP;
+	EMPI_Comm EMPI_CMP_REP_INTERCOMM;
 	EMPI_Comm EMPI_CMP_NO_REP;
 	EMPI_Comm EMPI_CMP_NO_REP_INTERCOMM;
 };
 //struct mpi_ft_comm;
 typedef struct mpi_ft_comm *MPI_Comm;
 
-struct mpi_ft_op{
-  OMPI_Op oop;
-  EMPI_Op eop;
-  //void *func;
+struct mpi_ft_op {
+	EMPI_Op eop;
 };
 //struct mpi_ft_op;
 typedef struct mpi_ft_op *MPI_Op;
@@ -69,7 +58,7 @@ typedef MPI_File_errhandler_function MPI_File_errhandler_fn;
 typedef MPI_Win_errhandler_function MPI_Win_errhandler_fn;
 typedef int MPI_Errhandler;
 
-struct mpi_ft_status{
+struct mpi_ft_status {
 	EMPI_Status status;
 	int count;
 	//int count_lo;
@@ -81,17 +70,28 @@ struct mpi_ft_status{
 //struct mpi_ft_status;
 typedef struct mpi_ft_status MPI_Status;
 
-struct mpi_ft_request{
+struct mpi_ft_request;
+
+struct parep_mpi_request_list_node {
+	struct mpi_ft_request *req;
+	struct parep_mpi_request_list_node *next;
+	struct parep_mpi_request_list_node *prev;
+};
+typedef struct parep_mpi_request_list_node reqNode;
+
+struct mpi_ft_request {
 	EMPI_Request *reqcmp;
 	EMPI_Request *reqrep;
+	EMPI_Request **reqcolls;
+	int num_reqcolls;
 	bool complete;
 	MPI_Comm comm;
 	MPI_Status status;
 	int type;
 	void *bufloc;
-	//void *backup;
-	//void *backuploc;
 	void *storeloc;
+	reqNode *rnode;
+	commbuf_node_t *cbuf;
 };
 //struct mpi_ft_request;
 typedef struct mpi_ft_request *MPI_Request;
@@ -572,22 +572,6 @@ extern struct mpi_ft_op mpi_ft_op_no_op;
 #define MPI_SEEK_END 604
 #define MPI_MAX_DATAREP_STRING 128
 #define HAVE_MPI_DARRAY_SUBARRAY
-
-
-#define MPI_FT_COLLECTIVE_TAG 300
-
-#define MPI_FT_BARRIER 0
-#define MPI_FT_BCAST 1
-#define MPI_FT_SCATTER 2
-#define MPI_FT_GATHER 3
-#define MPI_FT_REDUCE 4
-#define MPI_FT_ALLGATHER 5
-#define MPI_FT_ALLTOALL 6
-#define MPI_FT_ALLREDUCE 7
-#define MPI_FT_ALLTOALLV 8
-
-#define MPI_FT_REQUEST_SEND 0
-#define MPI_FT_REQUEST_RECV 1
 
 #ifdef __cplusplus
 }

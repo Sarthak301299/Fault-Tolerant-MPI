@@ -3,5 +3,4 @@
 export PAREP_MPI_WORKDIR=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi
 export CC=gcc
 
-###echo $CC -I$PAREP_MPI_WORKDIR/src -fno-stack-protector $@ -L$PAREP_MPI_WORKDIR/lib -lmpi -ldl
-$CC $@ -I$PAREP_MPI_WORKDIR/src -fno-stack-protector -L$PAREP_MPI_WORKDIR/lib -lmpi -ldl
+$CC $@ -I$PAREP_MPI_WORKDIR/src -fno-omit-frame-pointer -fno-stack-protector -L$PAREP_MPI_WORKDIR/lib -lmpi

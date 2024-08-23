@@ -1,0 +1,28 @@
+#!/bin/bash
+
+export PAREP_CKPT_COORDINATOR_IP="$(hostname -i)"
+
+echo "Inside PAREP MPI DAEMON"
+export PAREP_MPI_WORKDIR=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi
+echo $PAREP_MPI_NUM_USED_NODES
+echo $PAREP_MPI_NODE_LIST
+nlist=($PAREP_MPI_NODE_LIST)
+echo $nlist
+export PAREP_MPI_HEAD_NODE=$(head -n 1 $PAREP_MPI_WORKDIR/pbs_nodes)
+
+if [[ $SLURMD_NODENAME !=  $(head -n 1 $PAREP_MPI_WORKDIR/pbs_nodes) ]]
+then
+	for ((x=0; x<$PAREP_MPI_NUM_USED_NODES; x++))
+	do
+		if [[ $SLURMD_NODENAME == ${nlist[$x]} ]]
+		then
+			PATH=/home/phd/21/cdsjsar/MVAPICH2/bin:$PATH eval $PAREP_MPI_EMPI_DAEMON &
+		fi
+	done
+	unset LD_PRELOAD
+	PATH=/home/phd/21/cdsjsar/openMPIslurm/bin:$PATH eval $PAREP_MPI_OMPI_DAEMON
+else
+	PATH=/home/phd/21/cdsjsar/MVAPICH2slurm/bin:$PATH eval $PAREP_MPI_EMPI_DAEMON
+fi
+
+touch /home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/connection/ompisrundone

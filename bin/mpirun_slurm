@@ -1,11 +1,25 @@
 #!/bin/bash
 
+export PAREP_MPI_SRUN="$(which srun)"
 export DYN_CONNECT=1
+export PATH=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/bin/parep_mpi_srun:$PATH
 export PAREP_MPI_WORKDIR=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi
 export LD_LIBRARY_PATH=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/lib:$LD_LIBRARY_PATH
 
+export PAREP_MPI_NODE_LIST=$(scontrol show hostname $SLURM_JOB_NODELIST)
+
+export PAREP_CKPT_COORDINATOR_IP="$(hostname -i)"
+
+nlist=($PAREP_MPI_NODE_LIST)
+
+for ((x=0; x<$SLURM_JOB_NUM_NODES; x++))
+do
+	getent ahosts ${nlist[$x]} | grep ${nlist[$x]} | awk '{print $1}' >> $PAREP_MPI_WORKDIR/connection/nodelist
+done
+
 /home/phd/21/cdsjsar/MVAPICH2slurm/bin/mpirun $@ &
 
+unset LD_PRELOAD
 /home/phd/21/cdsjsar/openMPIslurm/bin/mpirun --with-ft ulfm $@
 
 rm -R /home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/connection/*
