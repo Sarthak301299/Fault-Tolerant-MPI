@@ -5,7 +5,7 @@
 void main(int argc, char **argv) {
 	char preloadlib[1000];
 	char executable[1000];
-	strcpy(preloadlib,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/lib/proxy_hack.so");
+	sprintf(preloadlib,"%s/lib/proxy_hack.so",getenv("PAREP_MPI_PATH"));
 	if(getenv("PAREP_MPI_EMPI_DAEMON_EXEC") != NULL) strcpy(executable,getenv("PAREP_MPI_EMPI_DAEMON_EXEC"));
 	setenv("LD_PRELOAD",preloadlib,1);
 	if(getenv("PAREP_MPI_EMPI_DAEMON_EXEC") != NULL) setenv("PAREP_MPI_PROXY_HACKED","1",1);
@@ -21,7 +21,7 @@ void main(int argc, char **argv) {
 	newargv[0] = (char *)malloc(sizeof(executable));
 	strcpy(newargv[0],executable);
 	char path[4096];
-	sprintf(path,"/home/phd/21/cdsjsar/MVAPICH2/bin:%s",getenv("PATH"));
+	sprintf(path,"%s/bin:%s",getenv("PAREP_MPI_EMPI_PATH"),getenv("PATH"));
 	setenv("PATH",path,1);
 	extern char **environ;
 	execve(executable,newargv,environ);
