@@ -32,10 +32,10 @@ int main(int argc, char **argv) {
 	char temp[64];
 	sprintf(temp,"%d",parep_mpi_node_id);
 	setenv("PAREP_MPI_NODE_ID",temp,1);
-	sprintf(path,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi");
-	setenv("PAREP_MPI_PATH",path,1);
-	sprintf(path,"/scratch/cdsjsar/checkpoint/%s",getenv("SLURM_JOB_ID"));
-	setenv("PAREP_MPI_WORKDIR",path,1);
+	//sprintf(path,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi");
+	//setenv("PAREP_MPI_PATH",path,1);
+	//sprintf(path,"/scratch/cdsjsar/checkpoint/%s",getenv("SLURM_JOB_ID"));
+	//setenv("PAREP_MPI_WORKDIR",path,1);
 	
 	char host_name[HOST_NAME_MAX+1];
 	int thname = gethostname(host_name,sizeof(host_name));

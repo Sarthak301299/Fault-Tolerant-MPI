@@ -35,6 +35,8 @@
 #define CMD_GET_ALL_LIDS 27
 #define CMD_INFORM_BARRIER_RUNNING 28
 #define CMD_INFORM_FINALIZE_REACHED 29
+#define CMD_INFORM_PREDICT 30
+#define CMD_BLOCK_PREDICT 31
 
 int PAREP_MPI_NODE_GROUP_SIZE_MAX = 32;
 
@@ -104,9 +106,9 @@ enum proc_state {
 #define COORDINATOR_GROUP_PORT 2583
 #define SOCKETERROR (-1)
 
-#define THREAD_POOL_SIZE 4
-#define QTHREAD_POOL_SIZE 4
-#define PROPTHREAD_POOL_SIZE 1
+#define THREAD_POOL_SIZE 8
+#define QTHREAD_POOL_SIZE 0
+#define PROPTHREAD_POOL_SIZE 0
 
 #define LID_HASH_KEYS 10
 #define RKEY_HASH_KEYS 20
@@ -234,6 +236,8 @@ void handle_get_all_qps(int);
 void handle_get_all_lids(int);
 void handle_inform_barrier_running(int);
 void handle_inform_finalize_reached(int);
+void handle_inform_predict(int);
+void handle_block_predict(int);
 
 SA_IN srvaddr;
 int parep_mpi_size;
@@ -305,6 +309,9 @@ SA_IN main_coordinator_addr;
 SA_IN *group_coordinator_addr;
 SA_IN group_main_coordinator_addr;
 
+char **coordinator_name;
+char *my_coordinator_name;
+
 int stdin_pipe[2];
 int **stdout_pipe;
 int **stderr_pipe;
@@ -373,5 +380,9 @@ int rem_recv_running = 0;
 int rem_recv_recvd = 0;
 pthread_mutex_t rem_recv_running_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t rem_recv_running_cond = PTHREAD_COND_INITIALIZER;
+
+int parep_mpi_block_predict = 0;
+pthread_mutex_t parep_mpi_block_predict_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t parep_mpi_block_predict_cond = PTHREAD_COND_INITIALIZER;
 
 #endif

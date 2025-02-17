@@ -34,18 +34,18 @@ int main(int argc, char **argv) {
 	char job_ckpt_dir[256];
 	char nfilepath[256];
 	char snfile[256];
-	sprintf(job_ckpt_dir,"/scratch/cdsjsar/checkpoint/%s",getenv("SLURM_JOB_ID"));
+	sprintf(job_ckpt_dir,"%s/checkpoint/%s",getenv("PAREP_MPI_BASE_WORKDIR"),getenv("SLURM_JOB_ID"));
 	{
 		int ret;
 		do {
 			ret = mkdir(job_ckpt_dir,0700);
 		} while((ret == -1) && (errno != EEXIST));
 	}
-	sprintf(nfilepath,"%s/pbs_nodes",job_ckpt_dir);
+	sprintf(nfilepath,"%s/pbs_nodes",getenv("PAREP_MPI_BASE_WORKDIR"),job_ckpt_dir);
 	
 	FILE *source, *target;
 	char ch;
-	sprintf(snfile,"/scratch/cdsjsar/checkpoint/pbs_nodes%s",getenv("SLURM_JOB_ID"));
+	sprintf(snfile,"%s/checkpoint/pbs_nodes%s",getenv("PAREP_MPI_BASE_WORKDIR"),getenv("SLURM_JOB_ID"));
 	source = fopen(snfile, "r");
 	if(source == NULL) {
 		printf("Error opening source file.\n");
@@ -106,13 +106,13 @@ int main(int argc, char **argv) {
 	pclose(fp);
 	
 	char path[4096];
-	sprintf(path,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/bin/parep_mpi_srun:%s",getenv("PATH"));
+	sprintf(path,"%s/bin/parep_mpi_srun:%s",getenv("PAREP_MPI_PATH"),getenv("PATH"));
 	setenv("PATH",path,1);
-	sprintf(path,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi");
-	setenv("PAREP_MPI_PATH",path,1);
-	sprintf(path,"/scratch/cdsjsar/checkpoint/%s",getenv("SLURM_JOB_ID"));
+	//sprintf(path,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi");
+	//setenv("PAREP_MPI_PATH",path,1);
+	sprintf(path,"%s/checkpoint/%s",getenv("PAREP_MPI_BASE_WORKDIR"),getenv("SLURM_JOB_ID"));
 	setenv("PAREP_MPI_WORKDIR",path,1);
-	sprintf(path,"/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/lib:%s",getenv("LD_LIBRARY_PATH"));
+	sprintf(path,"%s/lib:%s",getenv("PAREP_MPI_PATH"),getenv("LD_LIBRARY_PATH"));
 	setenv("LD_LIBRARY_PATH",path,1);
 	
 	char host_name[HOST_NAME_MAX+1];
@@ -178,13 +178,8 @@ int main(int argc, char **argv) {
 		
 		if(empi_pid == 0) { //CHILD PROCESS
 			char exec[1024];
-			char thresh[8];
-			sprintf(thresh,"%d",parep_mpi_size);
-			setenv("MV2_ON_DEMAND_THRESHOLD",thresh,1);
-			setenv("MV2_ON_DEMAND_UD_INFO_EXCHANGE","0",1);
-			setenv("MV2_USE_PMI_IBARRIER","0",1);
-			setenv("MV2_USE_PMI_IALLGATHER","0",1);
-			sprintf(exec,"/home/phd/21/cdsjsar/MVAPICH2/bin/mpirun");
+			setenv("MV2_USE_UD_HYBRID","0",1);
+			sprintf(exec,"%s/bin/mpirun",getenv("PAREP_MPI_EMPI_PATH"));
 			char **newargv;
 			newargv = (char **)malloc(sizeof(char *)*(argc+1));
 			newargv[0] = (char *)malloc(sizeof(exec));
