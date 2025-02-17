@@ -23,6 +23,8 @@ extern struct sockaddr_in parep_mpi_coordinator_addr;
 extern struct sockaddr_in parep_mpi_dyn_coordinator_addr;
 
 extern int parep_mpi_rank;
+extern int parep_mpi_leader_rank;
+extern pthread_mutex_t parep_mpi_leader_rank_mutex;
 
 extern int parep_mpi_completed;
 
@@ -145,15 +147,15 @@ void parep_send_key_val_pair_to_coordinator_multiple(int storenum, char *id, voi
 	size_t bytes_read;
 	int msgsize = 0;
 	
-	int dyn_sock;
+	/*int dyn_sock;
 	check((dyn_sock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 	int ret;
 	do {
 		ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
-	} while(ret != 0);
+	} while(ret != 0);*/
 	
 	if(!strcmp(id,"ib_lid")) {
-		char *buffer = (char *)malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint16_t)) + (storenum*sizeof(uint16_t)));
+		/*char *buffer = (char *)malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint16_t)) + (storenum*sizeof(uint16_t)));
 		*((int *)buffer) = cmd;
 		memcpy(buffer + sizeof(int), &storenum, sizeof(int));
 		strcpy(id_buf,"ib_lid");
@@ -191,11 +193,16 @@ void parep_send_key_val_pair_to_coordinator_multiple(int storenum, char *id, voi
 				break;
 			}
 		}
-		free(buffer);
+		free(buffer);*/
+		for(int i = 0; i < storenum; i++) {
+			if(((uint16_t *)key)[i] == (uint16_t)-1) {
+				((uint16_t *)key)[i] = ((uint16_t *)val)[i];
+			}
+		}
 	} else if(!strcmp(id,"ib_qp")) {
 		uint32_t *real_qp_num = (uint32_t *)val;
 		uint32_t *pd_id = (uint32_t *)(((char *)val) + (storenum*sizeof(uint32_t)));
-		char *buffer = (char *)malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)));
+		/*char *buffer = (char *)malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)));
 		*((int *)buffer) = cmd;
 		memcpy(buffer + sizeof(int), &storenum, sizeof(int));
 		strcpy(id_buf,"ib_qp");
@@ -234,11 +241,16 @@ void parep_send_key_val_pair_to_coordinator_multiple(int storenum, char *id, voi
 				break;
 			}
 		}
-		free(buffer);
+		free(buffer);*/
+		for(int i = 0; i < storenum; i++) {
+			if(((uint32_t *)key)[i] == (uint32_t)-1) {
+				((uint32_t *)key)[i] = real_qp_num[i];
+			}
+		}
 	} else if(!strcmp(id,"ib_rkey")) {
 		uint32_t *virt_rkey = (uint32_t *)key;
 		uint32_t *pd_id = (uint32_t *)(((char *)key) + (storenum*sizeof(uint32_t)));
-		char *buffer = (char *)malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)));
+		/*char *buffer = (char *)malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)));
 		*((int *)buffer) = cmd;
 		memcpy(buffer + sizeof(int), &storenum, sizeof(int));
 		strcpy(id_buf,"ib_rkey");
@@ -277,9 +289,14 @@ void parep_send_key_val_pair_to_coordinator_multiple(int storenum, char *id, voi
 				break;
 			}
 		}
-		free(buffer);
+		free(buffer);*/
+		for(int i = 0; i < storenum; i++) {
+			if(((uint32_t *)virt_rkey)[i] == (uint32_t)-1) {
+				((uint32_t *)virt_rkey)[i] = ((uint32_t *)val)[i];
+			}
+		}
 	}
-	close(dyn_sock);
+	//close(dyn_sock);
 }
 
 void parep_send_key_val_pair_to_coordinator(char *id, void *key, size_t key_size, void *val, size_t val_size) {
@@ -289,17 +306,17 @@ void parep_send_key_val_pair_to_coordinator(char *id, void *key, size_t key_size
 	size_t bytes_read;
 	int msgsize = 0;
 	
-	int dyn_sock;
+	/*int dyn_sock;
 	check((dyn_sock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 	int ret;
 	do {
 		ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
 	} while(ret != 0);
 	
-	*((int *)buffer) = cmd;
+	*((int *)buffer) = cmd;*/
 	
 	if(!strcmp(id,"ib_lid")) {
-		strcpy(id_buf,"ib_lid");
+		/*strcpy(id_buf,"ib_lid");
 		memcpy(buffer + sizeof(int), id_buf, 20);
 		memcpy(buffer + sizeof(int) + 20, key, sizeof(uint16_t));
 		memcpy(buffer + sizeof(int) + 20 + sizeof(uint16_t), val, sizeof(uint16_t));
@@ -326,15 +343,17 @@ void parep_send_key_val_pair_to_coordinator(char *id, void *key, size_t key_size
 			check(bytes_read,"recv error ib_lid send");
 
 			*((uint16_t *)key) = *((uint16_t *)buffer);
+		}*/
+		if(*((uint16_t *)key) == (uint16_t)-1) {
+			*((uint16_t *)key) = *((uint16_t *)val);
 		}
-		
 	} else if(!strcmp(id,"ib_qp")) {
 		uint32_t real_qp_num;
 		uint32_t pd_id;
 		qp_id_t *rslt = (qp_id_t *)val;
 		real_qp_num = rslt->qp_num;
 		pd_id = rslt->pd_id;
-		strcpy(id_buf,"ib_qp");
+		/*strcpy(id_buf,"ib_qp");
 		memcpy(buffer + sizeof(int), id_buf, 20);
 		memcpy(buffer + sizeof(int) + 20, key, sizeof(uint32_t));
 		memcpy(buffer + sizeof(int) + 20 + sizeof(uint32_t), &real_qp_num, sizeof(uint32_t));
@@ -362,8 +381,10 @@ void parep_send_key_val_pair_to_coordinator(char *id, void *key, size_t key_size
 			check(bytes_read,"recv error ib_qp send");
 
 			*((uint32_t *)key) = *((uint32_t *)buffer);
+		}*/
+		if(*((uint32_t *)key) == (uint32_t)-1) {
+			*((uint32_t *)key) = real_qp_num;
 		}
-		
 	} else if(!strcmp(id,"ib_rkey")) {
 		uint32_t virt_rkey;
 		uint32_t pd_id;
@@ -373,7 +394,7 @@ void parep_send_key_val_pair_to_coordinator(char *id, void *key, size_t key_size
 		virt_rkey = rslt->rkey;
 		pd_id = rslt->pd_id;
 		real_rkey = *((uint32_t *)val);
-		strcpy(id_buf,"ib_rkey");
+		/*strcpy(id_buf,"ib_rkey");
 		memcpy(buffer + sizeof(int), id_buf, 20);
 		memcpy(buffer + sizeof(int) + 20, &virt_rkey, sizeof(uint32_t));
 		memcpy(buffer + sizeof(int) + 20 + sizeof(uint32_t), &pd_id, sizeof(uint32_t));
@@ -401,14 +422,16 @@ void parep_send_key_val_pair_to_coordinator(char *id, void *key, size_t key_size
 			check(bytes_read,"recv error ib_rkey send");
 
 			rslt->rkey = *((uint32_t *)buffer);
+		}*/
+		if(virt_rkey == (uint32_t)-1) {
+			rslt->rkey = real_rkey;
 		}
-		
 	} else {
 		perror("Invalid id");
 		exit(1);
 	}
 	
-	close(dyn_sock);
+	//close(dyn_sock);
 }
 
 void parep_send_query_to_coordinator(char *id, void *key, size_t key_size, void *val, size_t *val_size) {
@@ -418,7 +441,7 @@ void parep_send_query_to_coordinator(char *id, void *key, size_t key_size, void 
 	size_t bytes_read;
 	int msgsize = 0;
 	
-	int dyn_sock;
+	/*int dyn_sock;
 	check((dyn_sock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 	int ret;
 	if(strcmp(id,"ib_rkey")) {
@@ -427,10 +450,10 @@ void parep_send_query_to_coordinator(char *id, void *key, size_t key_size, void 
 		} while(ret != 0);
 	
 		*((int *)buffer) = cmd;
-	}
+	}*/
 	
 	if(!strcmp(id,"ib_lid")) {
-		strcpy(id_buf,"ib_lid");
+		/*strcpy(id_buf,"ib_lid");
 		memcpy(buffer + sizeof(int), id_buf, 20);
 		memcpy(buffer + sizeof(int) + 20, key, sizeof(uint16_t));
 		write(dyn_sock,buffer,sizeof(int) + 20 + sizeof(uint16_t));
@@ -455,12 +478,13 @@ void parep_send_query_to_coordinator(char *id, void *key, size_t key_size, void 
 		check(bytes_read,"recv error ib_lid query");
 
 		*((uint16_t *)val) = *((uint16_t *)buffer);
-		*val_size = msgsize;
-		
+		*val_size = msgsize;*/
+		*((uint16_t *)val) = *((uint16_t *)key);
+		*val_size = sizeof(uint16_t);
 	} else if(!strcmp(id,"ib_qp")) {
 		uint32_t virt_qp_num = *((uint32_t *)key);
 		qp_id_t *rslt = (qp_id_t *)val;
-		strcpy(id_buf,"ib_qp");
+		/*strcpy(id_buf,"ib_qp");
 		memcpy(buffer + sizeof(int), id_buf, 20);
 		memcpy(buffer + sizeof(int) + 20, &virt_qp_num, sizeof(uint32_t));
 		write(dyn_sock,buffer,sizeof(int) + 20 + sizeof(uint32_t));
@@ -486,8 +510,10 @@ void parep_send_query_to_coordinator(char *id, void *key, size_t key_size, void 
 		
 		rslt->qp_num = *((uint32_t *)buffer);
 		rslt->pd_id = *((uint32_t *)(buffer + sizeof(uint32_t)));
-		*val_size = msgsize;
-		
+		*val_size = msgsize;*/
+		rslt->qp_num = virt_qp_num;
+		rslt->pd_id = -1;
+		*val_size = sizeof(2*sizeof(uint32_t));
 	} else if(!strcmp(id,"ib_rkey")) {
 		rkey_id_t *rslt = (rkey_id_t *)key;
 		uint32_t virt_rkey = rslt->rkey;
@@ -526,7 +552,7 @@ void parep_send_query_to_coordinator(char *id, void *key, size_t key_size, void 
 		perror("Invalid id");
 		exit(1);
 	}
-	close(dyn_sock);
+	//close(dyn_sock);
 }
 
 uint32_t parep_get_unique_pd_id_from_coordinator() {
@@ -536,7 +562,7 @@ uint32_t parep_get_unique_pd_id_from_coordinator() {
 	size_t bytes_read;
 	int msgsize = 0;
 	
-	int dyn_sock;
+	/*int dyn_sock;
 	check((dyn_sock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 	int ret;
 	do {
@@ -567,8 +593,8 @@ uint32_t parep_get_unique_pd_id_from_coordinator() {
 	
 	pd_id = *((uint32_t *)buffer);
 	
-	close(dyn_sock);
-	
+	close(dyn_sock);*/
+	pd_id = (uint32_t)-1;
 	return pd_id;
 }
 
@@ -579,7 +605,7 @@ uint32_t parep_get_unique_rkey_from_coordinator() {
 	size_t bytes_read;
 	int msgsize = 0;
 	
-	int dyn_sock;
+	/*int dyn_sock;
 	check((dyn_sock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 	int ret;
 	do {
@@ -610,8 +636,8 @@ uint32_t parep_get_unique_rkey_from_coordinator() {
 	
 	rkey = *((uint32_t *)buffer);
 	
-	close(dyn_sock);
-	
+	close(dyn_sock);*/
+	rkey = (uint32_t)-1;
 	return rkey;
 }
 
@@ -754,6 +780,16 @@ void perform_barrier() {
 				if(msgsize >= (sizeof(int))) break;
 			}
 			int out = *((int *)buffer);
+			if(out != CMD_BARRIER) {
+				printf("%d: Failed proc during restore barrier out %d bytes_read %d errno %d\n",getpid(),out,bytes_read,errno);
+				//assert(out == CMD_INFORM_PROC_FAILED);
+				pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
+				if(parep_mpi_rank == parep_mpi_leader_rank) {
+					parep_infiniband_cmd(PAREP_IB_KILL_COORDINATOR);
+				}
+				pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
+				while(1);
+			}
 			assert(out == CMD_BARRIER);
 			int fail_ready = 0;
 			msgsize = 0;
@@ -1971,9 +2007,9 @@ void parep_infiniband_cmd(int cmd) {
 }
 
 int _fork_init() {
-	is_fork = true;
+	//is_fork = true;
 	int ret = NEXT_IBV_FNC(ibv_fork_init)();
-	if(ret != 0) is_fork = false;
+	//if(ret != 0) is_fork = false;
 	return ret;
 }
 
@@ -1986,7 +2022,8 @@ int _fork_init() {
 struct ibv_device **
 _get_device_list(int *num_devices)
 {
-	struct ibv_device **real_dev_list = NULL;
+	return NEXT_IBV_FNC(ibv_get_device_list)(num_devices);
+	/*struct ibv_device **real_dev_list = NULL;
 	int real_num_devices;
 	struct dev_list_info *list_info;
 	int i;
@@ -2032,33 +2069,36 @@ _get_device_list(int *num_devices)
 		dev->list_info = list_info;
 	}
 
-	return user_list;
+	return user_list;*/
 }
 
 const char *
 _get_device_name(struct ibv_device *device)
 {
-	if (!IS_INTERNAL_IBV_STRUCT(ibv_device_to_internal(device))) {
+	return NEXT_IBV_FNC(ibv_get_device_name)(device);
+	/*if (!IS_INTERNAL_IBV_STRUCT(ibv_device_to_internal(device))) {
 		return NEXT_IBV_FNC(ibv_get_device_name)(device);
 	}
-	return NEXT_IBV_FNC(ibv_get_device_name)(ibv_device_to_internal(device)->real_dev);
+	return NEXT_IBV_FNC(ibv_get_device_name)(ibv_device_to_internal(device)->real_dev);*/
 }
 
 // TODO: I think the GUID could change and need to be translated
 uint64_t
 _get_device_guid(struct ibv_device *dev)
 {
-	struct internal_ibv_dev *internal_dev = ibv_device_to_internal(dev);
+	return NEXT_IBV_FNC(ibv_get_device_guid)(dev);
+	/*struct internal_ibv_dev *internal_dev = ibv_device_to_internal(dev);
 	if (!IS_INTERNAL_IBV_STRUCT(internal_dev)) {
 		return NEXT_IBV_FNC(ibv_get_device_guid)(dev);
 	}
-	return NEXT_IBV_FNC(ibv_get_device_guid)(internal_dev->real_dev);
+	return NEXT_IBV_FNC(ibv_get_device_guid)(internal_dev->real_dev);*/
 }
 
 struct ibv_comp_channel *
 _create_comp_channel(struct ibv_context *ctx)
 {
-	struct internal_ibv_ctx *internal_ctx;
+	return NEXT_IBV_COMP_CHANNEL(ibv_create_comp_channel)(ctx);
+	/*struct internal_ibv_ctx *internal_ctx;
 	struct internal_ibv_comp_channel *internal_comp;
 
 	internal_ctx = ibv_ctx_to_internal(ctx);
@@ -2083,13 +2123,14 @@ _create_comp_channel(struct ibv_context *ctx)
 	internal_comp->user_channel.context = ctx;
 	list_push_back(&comp_list, &internal_comp->elem);
 
-	return &internal_comp->user_channel;
+	return &internal_comp->user_channel;*/
 }
 
 int
 _destroy_comp_channel(struct ibv_comp_channel *channel)
 {
-	struct internal_ibv_comp_channel *internal_comp;
+	return NEXT_IBV_COMP_CHANNEL(ibv_destroy_comp_channel)(channel);
+	/*struct internal_ibv_comp_channel *internal_comp;
 	int rslt;
 
 	internal_comp = ibv_comp_to_internal(channel);
@@ -2099,7 +2140,7 @@ _destroy_comp_channel(struct ibv_comp_channel *channel)
 	list_remove(&internal_comp->elem);
 	free(internal_comp);
 
-	return rslt;
+	return rslt;*/
 }
 
 int
@@ -2108,6 +2149,55 @@ _get_cq_event(struct ibv_comp_channel *channel,
               void **cq_context)
 {
 	struct internal_ibv_comp_channel *internal_channel;
+	struct internal_ibv_cq *internal_cq;
+	int rslt, flags;
+	bool __parep_mpi_ckpt_disabled;
+	
+	do {
+		flags = NEXT_FNC(fcntl)(channel->fd, F_GETFL, NULL);
+		// We need to change the call to non-blocking mode
+		// FIXME: we need to take care of the case where fd is already
+		// changed to non-blocking mode by the user.
+		if (!(flags & O_NONBLOCK)) {
+			rslt = NEXT_FNC(fcntl)(channel->fd, F_SETFL, flags | O_NONBLOCK);
+			if (rslt < 0) {
+				IBV_ERROR("Failed to change file descriptor of completion event channel: %d\n", errno);
+			}
+		}
+
+		{
+			cq_event_polled = 0;
+			int ms_timeout = 100;
+			struct pollfd my_pollfd = {
+				.fd = channel->fd,
+				.events = POLLIN,
+				.revents = 0
+			};
+
+			do {
+				rslt = NEXT_FNC(poll)(&my_pollfd, 1, ms_timeout);
+				if((rslt == -1) && (errno == EINTR)) rslt = 0;
+			} while (rslt == 0);
+			cq_event_polled = 1;
+
+			if (rslt == -1) {
+				IBV_ERROR("poll() in ibv_get_cq_event() failed: %d\n",errno);
+			}
+		}
+		__parep_mpi_ckpt_disabled = parep_mpi_disable_ckpt();
+		if(cq_event_polled == 0) {
+			if(__parep_mpi_ckpt_disabled) parep_mpi_enable_ckpt();
+		}
+	} while(cq_event_polled == 0);
+	
+	cq_event_polled = 0;
+	
+	rslt = NEXT_IBV_FNC(ibv_get_cq_event)(channel, cq, cq_context);
+	
+	if(__parep_mpi_ckpt_disabled) parep_mpi_enable_ckpt();
+
+	return rslt;
+	/*struct internal_ibv_comp_channel *internal_channel;
 	struct internal_ibv_cq *internal_cq;
 	int rslt, flags;
 	bool __parep_mpi_ckpt_disabled;
@@ -2166,13 +2256,61 @@ _get_cq_event(struct ibv_comp_channel *channel,
 	
 	if(__parep_mpi_ckpt_disabled) parep_mpi_enable_ckpt();
 
-	return rslt;
+	return rslt;*/
 }
 
 int
 _get_async_event(struct ibv_context *ctx, struct ibv_async_event *event)
 {
-	struct internal_ibv_ctx *internal_ctx;
+	int rslt;
+	bool __parep_mpi_ckpt_disabled;
+	
+	do {
+		int flags = NEXT_FNC(fcntl)(ctx->async_fd, F_GETFL, NULL);
+		// We need to change the call to non-blocking mode
+		if (!(flags & O_NONBLOCK)) {
+			rslt  = NEXT_FNC(fcntl)(ctx->async_fd, F_SETFL, flags | O_NONBLOCK);
+			if (rslt < 0) {
+				IBV_ERROR("Failed to change file descriptor of async event queue: %d\n", errno);
+			}
+		}
+
+		{
+			async_fd_polled = 0;
+			int ms_timeout = 100;
+			struct pollfd my_pollfd = {
+				.fd = ctx->async_fd,
+				.events = POLLIN,
+				.revents = 0
+			};
+
+			do {
+				rslt = NEXT_FNC(poll)(&my_pollfd, 1, ms_timeout);
+				if((rslt == -1) && (errno == EINTR)) rslt = 0;
+			} while (rslt == 0);
+			
+			async_fd_polled = 1;
+
+			if (rslt == -1) {
+				IBV_ERROR("poll() in ibv_get_async_event() failed %d\n",errno);
+			}
+		}
+		
+		__parep_mpi_ckpt_disabled = parep_mpi_disable_ckpt();
+		
+		if(async_fd_polled == 0) {
+			if(__parep_mpi_ckpt_disabled) parep_mpi_enable_ckpt();
+		}
+		
+	} while(async_fd_polled == 0);
+	
+	async_fd_polled = 0;
+
+	rslt = NEXT_IBV_FNC(ibv_get_async_event)(ctx, event);
+	
+	if(__parep_mpi_ckpt_disabled) parep_mpi_enable_ckpt();
+	return rslt;
+	/*struct internal_ibv_ctx *internal_ctx;
 	struct internal_ibv_qp *internal_qp;
 	struct internal_ibv_cq *internal_cq;
 	struct internal_ibv_srq *internal_srq;
@@ -2230,7 +2368,7 @@ _get_async_event(struct ibv_context *ctx, struct ibv_async_event *event)
 	rslt = NEXT_IBV_FNC(ibv_get_async_event)(internal_ctx->real_ctx, event);
 
 	switch (event->event_type) {
-		/* QP events */
+		// QP events
 		case IBV_EVENT_QP_FATAL:
 		case IBV_EVENT_QP_REQ_ERR:
 		case IBV_EVENT_QP_ACCESS_ERR:
@@ -2244,14 +2382,14 @@ _get_async_event(struct ibv_context *ctx, struct ibv_async_event *event)
 			event->element.qp = &internal_qp->user_qp;
 			break;
 
-		/* CQ events */
+		// CQ events
 		case IBV_EVENT_CQ_ERR:
 			internal_cq = get_cq_from_pointer(event->element.cq);
 			assert(internal_cq != NULL);
 			event->element.cq = &internal_cq->user_cq;
 			break;
 
-		/*SRQ events */
+		//SRQ events
 		case IBV_EVENT_SRQ_ERR:
 		case IBV_EVENT_SRQ_LIMIT_REACHED:
 			internal_srq = get_srq_from_pointer(event->element.srq);
@@ -2267,7 +2405,7 @@ _get_async_event(struct ibv_context *ctx, struct ibv_async_event *event)
 		case IBV_EVENT_GID_CHANGE:
 			break;
 
-		/* CA events */
+		// CA events
 		case IBV_EVENT_DEVICE_FATAL:
 			return rslt;
 			break;
@@ -2276,18 +2414,19 @@ _get_async_event(struct ibv_context *ctx, struct ibv_async_event *event)
 				break;
 	}
 	if(__parep_mpi_ckpt_disabled) parep_mpi_enable_ckpt();
-	return rslt;
+	return rslt;*/
 }
 
 void
 _ack_async_event(struct ibv_async_event *event)
 {
-	struct internal_ibv_qp *internal_qp;
+	NEXT_IBV_FNC(ibv_ack_async_event)(event);
+	/*struct internal_ibv_qp *internal_qp;
 	struct internal_ibv_cq *internal_cq;
 	struct internal_ibv_srq *internal_srq;
 
 	switch (event->event_type) {
-		/* QP events */
+		// QP events 
 		case IBV_EVENT_QP_FATAL:
 		case IBV_EVENT_QP_REQ_ERR:
 		case IBV_EVENT_QP_ACCESS_ERR:
@@ -2301,14 +2440,14 @@ _ack_async_event(struct ibv_async_event *event)
 			event->element.qp = internal_qp->real_qp;
 			break;
 
-		/* CQ events */
+		// CQ events
 		case IBV_EVENT_CQ_ERR:
 			internal_cq = ibv_cq_to_internal(event->element.cq);
 			assert(internal_cq != NULL);
 			event->element.cq = internal_cq->real_cq;
 			break;
 
-		/*SRQ events */
+		//SRQ events
 		case IBV_EVENT_SRQ_ERR:
 		case IBV_EVENT_SRQ_LIMIT_REACHED:
 			internal_srq = ibv_srq_to_internal(event->element.srq);
@@ -2324,7 +2463,7 @@ _ack_async_event(struct ibv_async_event *event)
 		case IBV_EVENT_GID_CHANGE:
 			break;
 
-		/* CA events */
+		// CA events
 		case IBV_EVENT_DEVICE_FATAL:
 			break;
 		default:
@@ -2332,7 +2471,7 @@ _ack_async_event(struct ibv_async_event *event)
 			break;
 	}
 
-	NEXT_IBV_FNC(ibv_ack_async_event)(event);
+	NEXT_IBV_FNC(ibv_ack_async_event)(event);*/
 }
 
 // ! This performs the work of freeing the device list
@@ -2343,7 +2482,8 @@ _ack_async_event(struct ibv_async_event *event)
 void
 _free_device_list(struct ibv_device **dev_list)
 {
-	struct ibv_device **real_dev_list;
+	NEXT_IBV_FNC(ibv_free_device_list)(dev_list);
+	/*struct ibv_device **real_dev_list;
 	int i;
 	bool all_device_free = true;
 	struct dev_list_info *list_info;
@@ -2374,7 +2514,7 @@ _free_device_list(struct ibv_device **dev_list)
 	free(list_info);
 	} else {
 	list_info->in_free = true;
-	}
+	}*/
 }
 
 /*
@@ -2387,7 +2527,8 @@ _free_device_list(struct ibv_device **dev_list)
 struct ibv_context *
 _open_device(struct ibv_device *device)
 {
-	struct internal_ibv_dev *dev = ibv_device_to_internal(device);
+	struct ibv_context *ctx = NEXT_IBV_FNC(ibv_open_device)(device);
+	/*struct internal_ibv_dev *dev = ibv_device_to_internal(device);
 	struct internal_ibv_ctx *ctx;
   struct ibv_device_attr device_attr;
   int ret;
@@ -2467,10 +2608,10 @@ _open_device(struct ibv_device *device)
 		}
 	}
 	
-	memcpy(&ctx->user_ctx, ctx->real_ctx, sizeof(struct ibv_context));
+	memcpy(&ctx->user_ctx, ctx->real_ctx, sizeof(struct ibv_context));*/
 
-  /* setup the trampolines */
-  UPDATE_FUNC_ADDR(post_recv, ctx->user_ctx.ops.post_recv);
+  // setup the trampolines
+  /*UPDATE_FUNC_ADDR(post_recv, ctx->user_ctx.ops.post_recv);
   UPDATE_FUNC_ADDR(post_srq_recv, ctx->user_ctx.ops.post_srq_recv);
   UPDATE_FUNC_ADDR(post_send, ctx->user_ctx.ops.post_send);
   UPDATE_FUNC_ADDR(poll_cq, ctx->user_ctx.ops.poll_cq);
@@ -2498,23 +2639,56 @@ _open_device(struct ibv_device *device)
 
   UPDATE_FUNC_ADDR(alloc_mw, ctx->user_ctx.ops.alloc_mw);
   // UPDATE_FUNC_ADDR(bind_mw, ctx->user_ctx.ops.bind_mw);
-  UPDATE_FUNC_ADDR(dealloc_mw, ctx->user_ctx.ops.dealloc_mw);
+  UPDATE_FUNC_ADDR(dealloc_mw, ctx->user_ctx.ops.dealloc_mw);*/
 	
-	ctx->user_ctx.device = device;
-	list_push_back(&ctx_list, &ctx->elem);
-  return &ctx->user_ctx;
+	// setup the trampolines
+  UPDATE_FUNC_ADDR(post_recv, ctx->ops.post_recv);
+  UPDATE_FUNC_ADDR(post_srq_recv, ctx->ops.post_srq_recv);
+  UPDATE_FUNC_ADDR(post_send, ctx->ops.post_send);
+  UPDATE_FUNC_ADDR(poll_cq, ctx->ops.poll_cq);
+  UPDATE_FUNC_ADDR(req_notify_cq, ctx->ops.req_notify_cq);
+
+  UPDATE_FUNC_ADDR(query_device, ctx->ops._compat_query_device);
+  UPDATE_FUNC_ADDR(query_port, ctx->ops._compat_query_port);
+  UPDATE_FUNC_ADDR(alloc_pd, ctx->ops._compat_alloc_pd);
+  UPDATE_FUNC_ADDR(dealloc_pd, ctx->ops._compat_dealloc_pd);
+  UPDATE_FUNC_ADDR(reg_mr, ctx->ops._compat_reg_mr);
+  UPDATE_FUNC_ADDR(dereg_mr, ctx->ops._compat_dereg_mr);
+  // UPDATE_FUNC_ADDR(create_cq, ctx->ops.create_cq);
+  UPDATE_FUNC_ADDR(resize_cq, ctx->ops._compat_resize_cq);
+  UPDATE_FUNC_ADDR(destroy_cq, ctx->ops._compat_destroy_cq);
+  UPDATE_FUNC_ADDR(create_srq, ctx->ops._compat_create_srq);
+  UPDATE_FUNC_ADDR(modify_srq, ctx->ops._compat_modify_srq);
+  UPDATE_FUNC_ADDR(query_srq, ctx->ops._compat_query_srq);
+  UPDATE_FUNC_ADDR(destroy_srq, ctx->ops._compat_destroy_srq);
+  UPDATE_FUNC_ADDR(create_qp, ctx->ops._compat_create_qp);
+  UPDATE_FUNC_ADDR(query_qp, ctx->ops._compat_query_qp);
+  UPDATE_FUNC_ADDR(modify_qp, ctx->ops._compat_modify_qp);
+  UPDATE_FUNC_ADDR(destroy_qp, ctx->ops._compat_destroy_qp);
+  UPDATE_FUNC_ADDR(create_ah, ctx->ops._compat_create_ah);
+  UPDATE_FUNC_ADDR(destroy_ah, ctx->ops._compat_destroy_ah);
+
+  UPDATE_FUNC_ADDR(alloc_mw, ctx->ops.alloc_mw);
+  // UPDATE_FUNC_ADDR(bind_mw, ctx->ops.bind_mw);
+  UPDATE_FUNC_ADDR(dealloc_mw, ctx->ops.dealloc_mw);
+	
+	//ctx->user_ctx.device = device;
+	//list_push_back(&ctx_list, &ctx->elem);
+  //return &ctx->user_ctx;
+	return ctx;
 }
 
 int
 _query_device(struct ibv_context *context, struct ibv_device_attr *device_attr)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
+	return NEXT_IBV_FNC(ibv_query_device)(context, device_attr);
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
 
 	if (!IS_INTERNAL_IBV_STRUCT(internal_ctx)) {
 		return NEXT_IBV_FNC(ibv_query_device)(context, device_attr);
 	}
 
-	return NEXT_IBV_FNC(ibv_query_device)(internal_ctx->real_ctx, device_attr);
+	return NEXT_IBV_FNC(ibv_query_device)(internal_ctx->real_ctx, device_attr);*/
 }
 
 int
@@ -2522,7 +2696,8 @@ _query_port(struct ibv_context *context,
             uint8_t port_num,
             struct ibv_port_attr *port_attr)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
+	return NEXT_IBV_FNC(ibv_query_port)(context, port_num, (struct _compat_ibv_port_attr *)(port_attr));
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
 	int ret;
 
 	IBV_DEBUG("******* WRAPPER for ibv_query_port\n");
@@ -2550,7 +2725,7 @@ _query_port(struct ibv_context *context,
 		pthread_mutex_unlock(&lid_mutex);
 	}
 
-	return ret;
+	return ret;*/
 }
 
 int
@@ -2559,13 +2734,14 @@ _query_pkey(struct ibv_context *context,
             int index,
             uint16_t *pkey)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
+	return NEXT_IBV_FNC(ibv_query_pkey)(context, port_num, index, pkey);
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
 
 	if (!IS_INTERNAL_IBV_STRUCT(internal_ctx)) {
 		return NEXT_IBV_FNC(ibv_query_pkey)(context, port_num, index, pkey);
 	}
 
-	return NEXT_IBV_FNC(ibv_query_pkey)(internal_ctx->real_ctx, port_num, index, pkey);
+	return NEXT_IBV_FNC(ibv_query_pkey)(internal_ctx->real_ctx, port_num, index, pkey);*/
 }
 
 int
@@ -2574,19 +2750,21 @@ _query_gid(struct ibv_context *context,
            int index,
            union ibv_gid *gid)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
+	return NEXT_IBV_FNC(ibv_query_gid)(context, port_num, index, gid);
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
 
 	if (!IS_INTERNAL_IBV_STRUCT(internal_ctx)) {
 		return NEXT_IBV_FNC(ibv_query_gid)(context, port_num, index, gid);
 	}
 
-	return NEXT_IBV_FNC(ibv_query_gid)(internal_ctx->real_ctx, port_num, index, gid);
+	return NEXT_IBV_FNC(ibv_query_gid)(internal_ctx->real_ctx, port_num, index, gid);*/
 }
 
 int
 _close_device(struct ibv_context *ctx)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(ctx);
+	return NEXT_IBV_FNC(ibv_close_device)(ctx);
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(ctx);
 	struct internal_ibv_dev *dev;
 	struct dev_list_info *list_info;
 
@@ -2624,13 +2802,14 @@ _close_device(struct ibv_context *ctx)
 			free(list_info);
 		}
 	}
-	return rslt;
+	return rslt;*/
 }
 
 struct ibv_pd *
 _alloc_pd(struct ibv_context *context)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
+	return NEXT_IBV_FNC(ibv_alloc_pd)(context);
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
 	struct internal_ibv_pd *pd;
 
 	assert(IS_INTERNAL_IBV_STRUCT(internal_ctx));
@@ -2658,13 +2837,14 @@ _alloc_pd(struct ibv_context *context)
 
 	pthread_mutex_unlock(&pd_mutex);
 
-	return &pd->user_pd;
+	return &pd->user_pd;*/
 }
 
 int
 _dealloc_pd(struct ibv_pd *pd)
 {
-	struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
+	return NEXT_IBV_FNC(ibv_dealloc_pd)(pd);
+	/*struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
 	int rslt;
 
 	assert(IS_INTERNAL_IBV_STRUCT(internal_pd));
@@ -2673,7 +2853,7 @@ _dealloc_pd(struct ibv_pd *pd)
 	list_remove(&internal_pd->elem);
 	free(internal_pd);
 
-	return rslt;
+	return rslt;*/
 }
 
 struct ibv_mr *
@@ -2775,7 +2955,8 @@ _reg_mr_iova(struct ibv_pd *pd, void *addr, size_t length, uint64_t iova, int fl
 struct ibv_mr *
 _reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length, uint64_t iova, unsigned int flag)
 {
-  struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
+	return NEXT_IBV_FNC_1_8(ibv_reg_mr_iova2)(pd, addr, length, iova, flag);
+	/*struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
 	struct internal_ibv_mr *internal_mr;
 	rkey_mapping_t *mapping;
 
@@ -2805,16 +2986,16 @@ _reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length, uint64_t iova, unsig
 		mapping->virtual_rkey = internal_mr->user_mr.rkey;
 		mapping->real_rkey = internal_mr->real_mr->rkey;
 		mapping->pd_id = internal_pd->pd_id;
-		/*{
-			rkey_id_t cur_rkey_id = {
-				.rkey = mapping->virtual_rkey,
-				.pd_id = mapping->pd_id
-			};
+		//{
+		//	rkey_id_t cur_rkey_id = {
+		//		.rkey = mapping->virtual_rkey,
+		//		.pd_id = mapping->pd_id
+		//	};
 
-			parep_send_key_val_pair_to_coordinator("ib_rkey", &cur_rkey_id, sizeof(cur_rkey_id), &mapping->real_rkey, sizeof(mapping->real_rkey));
+		//	parep_send_key_val_pair_to_coordinator("ib_rkey", &cur_rkey_id, sizeof(cur_rkey_id), &mapping->real_rkey, sizeof(mapping->real_rkey));
 			
-			mapping->virtual_rkey = cur_rkey_id.rkey;
-		}*/
+		//	mapping->virtual_rkey = cur_rkey_id.rkey;
+		//}
 		//internal_mr->user_mr.rkey = mapping->virtual_rkey;
 		
 		if (is_restart) {
@@ -2853,17 +3034,18 @@ _reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length, uint64_t iova, unsig
 	list_push_back(&mr_list, &internal_mr->elem);
 	list_push_back(&rkey_list, &mapping->elem);
 
-	return &internal_mr->user_mr;
+	return &internal_mr->user_mr;*/
 }
 
 int
 _dereg_mr(struct ibv_mr *mr)
 {
-	struct internal_ibv_mr *internal_mr = ibv_mr_to_internal(mr);
-	struct list_elem *e;
+	return NEXT_IBV_FNC(ibv_dereg_mr)(mr);
+	//struct internal_ibv_mr *internal_mr = ibv_mr_to_internal(mr);
+	//struct list_elem *e;
 
-	assert(IS_INTERNAL_IBV_STRUCT(internal_mr));
-	int rslt = NEXT_IBV_FNC(ibv_dereg_mr)(internal_mr->real_mr);
+	//assert(IS_INTERNAL_IBV_STRUCT(internal_mr));
+	//int rslt = NEXT_IBV_FNC(ibv_dereg_mr)(internal_mr->real_mr);
 
 	/*
 	* The destruction of the internal mr structure is delayed till
@@ -2887,15 +3069,16 @@ _dereg_mr(struct ibv_mr *mr)
 	*/
 	// list_remove(&internal_mr->elem);
 	// free(internal_mr);
-	list_remove(&internal_mr->elem);
-	free(internal_mr);
-	return rslt;
+	//list_remove(&internal_mr->elem);
+	//free(internal_mr);
+	//return rslt;
 }
 
 int _req_notify_cq(struct ibv_cq *cq, int solicited_only)
 {
 	PAREP_MPI_DISABLE_CKPT();
-	struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
+	int rslt = _real_ibv_req_notify_cq(cq, solicited_only);
+	/*struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
 	int rslt;
 
 	assert(IS_INTERNAL_IBV_STRUCT(internal_cq));
@@ -2911,7 +3094,7 @@ int _req_notify_cq(struct ibv_cq *cq, int solicited_only)
 
 		log->solicited_only = solicited_only;
 		list_push_back(&internal_cq->req_notify_log, &log->elem);
-	}
+	}*/
 	
 	PAREP_MPI_ENABLE_CKPT();
 	return rslt;
@@ -2924,7 +3107,8 @@ _create_cq(struct ibv_context *context,
            struct ibv_comp_channel *channel,
            int comp_vector)
 {
-	struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
+	return NEXT_IBV_FNC(ibv_create_cq)(context, cqe, cq_context, channel, comp_vector);
+	/*struct internal_ibv_ctx *internal_ctx = ibv_ctx_to_internal(context);
 	struct internal_ibv_cq *internal_cq;
 	struct ibv_comp_channel *real_channel;
 
@@ -2941,7 +3125,7 @@ _create_cq(struct ibv_context *context,
 		IBV_ERROR("Could not allocate memory for _create_cq\n");
 	}
 
-	/* set up the lists */
+	// set up the lists
 	list_init(&internal_cq->wc_queue);
 	list_init(&internal_cq->req_notify_log);
 
@@ -2956,13 +3140,14 @@ _create_cq(struct ibv_context *context,
 	internal_cq->user_cq.channel = channel;
 
 	list_push_back(&cq_list, &internal_cq->elem);
-	return &internal_cq->user_cq;
+	return &internal_cq->user_cq;*/
 }
 
 int
 _resize_cq(struct ibv_cq *cq, int cqe)
 {
-	struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
+	return NEXT_IBV_FNC(ibv_resize_cq)(cq, cqe);
+	/*struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
 	int rslt;
 
 	if (!IS_INTERNAL_IBV_STRUCT(internal_cq)) {
@@ -2974,19 +3159,20 @@ _resize_cq(struct ibv_cq *cq, int cqe)
 		internal_cq->user_cq.cqe = internal_cq->real_cq->cqe;
 	}
 
-	return rslt;
+	return rslt;*/
 }
 
 int
 _destroy_cq(struct ibv_cq *cq)
 {
-	struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
+	return NEXT_IBV_FNC(ibv_destroy_cq)(cq);
+	/*struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
 	int rslt;
 
 	assert(IS_INTERNAL_IBV_STRUCT(internal_cq));
 	rslt = NEXT_IBV_FNC(ibv_destroy_cq)(internal_cq->real_cq);
 
-	/* destroy the four lists */
+	// destroy the four lists
 	struct list_elem *e;
 
 	e = list_begin(&internal_cq->wc_queue);
@@ -3008,18 +3194,19 @@ _destroy_cq(struct ibv_cq *cq)
 		free(log);
 	}
 
-	/* end destroying the lists */
+	// end destroying the lists
 
 	list_remove(&internal_cq->elem);
 	free(internal_cq);
 
-	return rslt;
+	return rslt;*/
 }
 
 struct ibv_qp *
 _create_qp(struct ibv_pd *pd, struct ibv_qp_init_attr *qp_init_attr)
 {
-	struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
+	return NEXT_IBV_FNC(ibv_create_qp)(pd, qp_init_attr);
+	/*struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
 	struct ibv_qp_init_attr attr = *qp_init_attr;
 	struct internal_ibv_qp *internal_qp;
 	qp_num_mapping_t *mapping;
@@ -3033,7 +3220,7 @@ _create_qp(struct ibv_pd *pd, struct ibv_qp_init_attr *qp_init_attr)
 	memset(internal_qp, 0, sizeof(struct internal_ibv_qp));
 	memset(mapping, 0, sizeof(qp_num_mapping_t));
 
-	/* fix up the qp_init_attr here */
+	// fix up the qp_init_attr here
 	assert(IS_INTERNAL_IBV_STRUCT(ibv_cq_to_internal(qp_init_attr->recv_cq)));
 	assert(IS_INTERNAL_IBV_STRUCT(ibv_cq_to_internal(qp_init_attr->send_cq)));
 	attr.recv_cq = ibv_cq_to_internal(qp_init_attr->recv_cq)->real_cq;
@@ -3063,11 +3250,9 @@ _create_qp(struct ibv_pd *pd, struct ibv_qp_init_attr *qp_init_attr)
 	internal_qp->user_qp.srq = qp_init_attr->srq;
 	internal_qp->init_attr = *qp_init_attr;
 
-	/*
-	* We use virtual pid + offset to virtualize the qp_num, so that
-	* all qp numbers are unique across the computation (since every
-	* virtual pid is unique).
-	* */
+	// We use virtual pid + offset to virtualize the qp_num, so that
+	// all qp numbers are unique across the computation (since every
+	// virtual pid is unique).
 	mapping->real_qp_num = internal_qp->real_qp->qp_num;
 	mapping->pd_id = internal_pd->pd_id;
 
@@ -3094,13 +3279,14 @@ _create_qp(struct ibv_pd *pd, struct ibv_qp_init_attr *qp_init_attr)
 	
 	pthread_mutex_unlock(&qp_mutex);
 
-	return &internal_qp->user_qp;
+	return &internal_qp->user_qp;*/
 }
 
 int
 _destroy_qp(struct ibv_qp *qp)
 {
-	struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
+	return NEXT_IBV_FNC(ibv_destroy_qp)(qp);
+	/*struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
 	qp_num_mapping_t *mapping;
 	int rslt;
 
@@ -3159,13 +3345,14 @@ _destroy_qp(struct ibv_qp *qp)
 	free(mapping);
 	free(internal_qp);
 
-	return rslt;
+	return rslt;*/
 }
 
 int
 _modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_mask)
 {
-	struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
+	return NEXT_IBV_FNC(ibv_modify_qp)(qp, attr, attr_mask);
+	/*struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
 	struct ibv_modify_qp_log *log;
 	struct ibv_qp_attr real_attr = *attr;
 	int rslt;
@@ -3205,7 +3392,7 @@ _modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_mask)
 
 	internal_qp->user_qp.state = internal_qp->real_qp->state;
 
-	return rslt;
+	return rslt;*/
 }
 
 int
@@ -3214,7 +3401,8 @@ _query_qp(struct ibv_qp *qp,
           int attr_mask,
           struct ibv_qp_init_attr *init_attr)
 {
-	struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
+	return NEXT_IBV_FNC(ibv_query_qp)(qp, attr, attr_mask, init_attr);
+	/*struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
 	int rslt;
 	struct list_elem *e;
 
@@ -3258,13 +3446,14 @@ _query_qp(struct ibv_qp *qp,
 		pthread_mutex_unlock(&qp_mutex);
 	}
 
-	return rslt;
+	return rslt;*/
 }
 
 struct ibv_srq *
 _create_srq(struct ibv_pd *pd, struct ibv_srq_init_attr *srq_init_attr)
 {
-	struct internal_ibv_pd *internal_pd;
+	return NEXT_IBV_FNC(ibv_create_srq)(pd, srq_init_attr);
+	/*struct internal_ibv_pd *internal_pd;
 	struct internal_ibv_srq *internal_srq;
 
 	internal_pd = ibv_pd_to_internal(pd);
@@ -3286,9 +3475,9 @@ _create_srq(struct ibv_pd *pd, struct ibv_srq_init_attr *srq_init_attr)
 	INIT_INTERNAL_IBV_TYPE(internal_srq);
 	memcpy(&internal_srq->user_srq, internal_srq->real_srq, sizeof(struct ibv_srq));
 
-	/* fix up the user_srq*/
-	/* loop to find the right context the "dumb way" */
-	/* This should probably just take the contxt from pd */
+	// fix up the user_srq
+	// loop to find the right context the "dumb way"
+	// This should probably just take the contxt from pd
 	struct list_elem *e;
 	struct internal_ibv_ctx *rslt = NULL;
 	for (e = list_begin(&ctx_list); e != list_end(&ctx_list); e = list_next(e)) {
@@ -3312,13 +3501,14 @@ _create_srq(struct ibv_pd *pd, struct ibv_srq_init_attr *srq_init_attr)
 	internal_srq->init_attr = *srq_init_attr;
 
 	list_push_back(&srq_list, &internal_srq->elem);
-	return &internal_srq->user_srq;
+	return &internal_srq->user_srq;*/
 }
 
 int
 _destroy_srq(struct ibv_srq *srq)
 {
-	struct internal_ibv_srq *internal_srq = ibv_srq_to_internal(srq);
+	return NEXT_IBV_FNC(ibv_destroy_srq)(srq);
+	/*struct internal_ibv_srq *internal_srq = ibv_srq_to_internal(srq);
 	int rslt;
 	struct list_elem *e;
 
@@ -3349,13 +3539,14 @@ _destroy_srq(struct ibv_srq *srq)
 	list_remove(&internal_srq->elem);
 	free(internal_srq);
 
-	return rslt;
+	return rslt;*/
 }
 
 int
 _modify_srq(struct ibv_srq *srq, struct ibv_srq_attr *attr, int attr_mask)
 {
-	struct internal_ibv_srq *internal_srq = ibv_srq_to_internal(srq);
+	return NEXT_IBV_FNC(ibv_modify_srq)(srq, attr, attr_mask);
+	/*struct internal_ibv_srq *internal_srq = ibv_srq_to_internal(srq);
 	struct ibv_modify_srq_log *log;
 
 	assert(IS_INTERNAL_IBV_STRUCT(internal_srq));
@@ -3371,28 +3562,30 @@ _modify_srq(struct ibv_srq *srq, struct ibv_srq_attr *attr, int attr_mask)
 	if (!rslt) {
 		list_push_back(&internal_srq->modify_srq_log, &log->elem);
 	}
-	return rslt;
+	return rslt;*/
 }
 
 int
 _query_srq(struct ibv_srq *srq, struct ibv_srq_attr *srq_attr)
 {
-	if (!IS_INTERNAL_IBV_STRUCT(ibv_srq_to_internal(srq))) {
+	return NEXT_IBV_FNC(ibv_query_srq)(srq, srq_attr);
+	/*if (!IS_INTERNAL_IBV_STRUCT(ibv_srq_to_internal(srq))) {
 		return NEXT_IBV_FNC(ibv_query_srq)(srq, srq_attr);
 	}
 
-	return NEXT_IBV_FNC(ibv_query_srq)(ibv_srq_to_internal(srq)->real_srq, srq_attr);
+	return NEXT_IBV_FNC(ibv_query_srq)(ibv_srq_to_internal(srq)->real_srq, srq_attr);*/
 }
 
 int _post_recv(struct ibv_qp *qp, struct ibv_recv_wr *wr,
                    struct ibv_recv_wr **bad_wr) {
-	struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
-	struct ibv_recv_wr *copy_wr;
-	struct ibv_recv_wr *copy_wr1;
+	//struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
+	//struct ibv_recv_wr *copy_wr;
+	//struct ibv_recv_wr *copy_wr1;
 	
 	PAREP_MPI_DISABLE_CKPT();
+	int rslt = _real_ibv_post_recv(qp, wr, bad_wr);
 
-	assert(IS_INTERNAL_IBV_STRUCT(internal_qp));
+	/*assert(IS_INTERNAL_IBV_STRUCT(internal_qp));
 	copy_wr = copy_recv_wr(wr);
 	int rslt;
 	update_lkey_recv(copy_wr);
@@ -3417,21 +3610,22 @@ int _post_recv(struct ibv_qp *qp, struct ibv_recv_wr *wr,
 		tmp = copy_wr1;
 		copy_wr1 = copy_wr1->next;
 		free(tmp);
-	}
+	}*/
 	PAREP_MPI_ENABLE_CKPT();
 	return rslt;
 }
 
 int _post_srq_recv(struct ibv_srq *srq, struct ibv_recv_wr *wr,
                        struct ibv_recv_wr **bad_wr) {
-	struct internal_ibv_srq *internal_srq = ibv_srq_to_internal(srq);
-	struct ibv_recv_wr *copy_wr;
-	int rslt;
-	struct ibv_recv_wr *copy_wr1;
+	//struct internal_ibv_srq *internal_srq = ibv_srq_to_internal(srq);
+	//struct ibv_recv_wr *copy_wr;
+	//int rslt;
+	//struct ibv_recv_wr *copy_wr1;
 	
 	PAREP_MPI_DISABLE_CKPT();
+	int rslt = _real_ibv_post_srq_recv(srq, wr, bad_wr);
 
-	assert(IS_INTERNAL_IBV_STRUCT(internal_srq));
+	/*assert(IS_INTERNAL_IBV_STRUCT(internal_srq));
 	copy_wr = copy_recv_wr(wr);
 	update_lkey_recv(copy_wr);
 
@@ -3461,21 +3655,22 @@ int _post_srq_recv(struct ibv_srq *srq, struct ibv_recv_wr *wr,
 		tmp = copy_wr1;
 		copy_wr1 = copy_wr1->next;
 		free(tmp);
-	}
+	}*/
 	PAREP_MPI_ENABLE_CKPT();
 	return rslt;
 }
 
 int _post_send(struct ibv_qp *qp, struct ibv_send_wr *wr, struct
                    ibv_send_wr **bad_wr) {
-	struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
-	struct ibv_send_wr *copy_wr;
-	int rslt;
-	struct ibv_send_wr *copy_wr1;
+	//struct internal_ibv_qp *internal_qp = ibv_qp_to_internal(qp);
+	//struct ibv_send_wr *copy_wr;
+	//int rslt;
+	//struct ibv_send_wr *copy_wr1;
 	
 	PAREP_MPI_DISABLE_CKPT();
+	int rslt = _real_ibv_post_send(qp, wr, bad_wr);
 
-	assert(IS_INTERNAL_IBV_STRUCT(internal_qp));
+	/*assert(IS_INTERNAL_IBV_STRUCT(internal_qp));
 	copy_wr = copy_send_wr(wr);
 
 	if (is_restart) {
@@ -3520,7 +3715,7 @@ int _post_send(struct ibv_qp *qp, struct ibv_send_wr *wr, struct
 		tmp = copy_wr1;
 		copy_wr1 = copy_wr1->next;
 		free(tmp);
-	}
+	}*/
 	
 	PAREP_MPI_ENABLE_CKPT();
 
@@ -3529,6 +3724,26 @@ int _post_send(struct ibv_qp *qp, struct ibv_send_wr *wr, struct
 
 int _poll_cq(struct ibv_cq *cq, int num_entries, struct ibv_wc *wc) {
 	int rslt = 0;
+	int i;
+	
+	PAREP_MPI_DISABLE_CKPT();
+	
+	rslt = _real_ibv_poll_cq(cq, num_entries, wc);
+	if (rslt < 0) {
+		IBV_ERROR("poll_cq() error!\n");
+	}
+
+	for (i = 0; i < rslt; i++) {
+		if ((wc[i].status != IBV_WC_SUCCESS) && (wc[i].status != IBV_WC_RETRY_EXC_ERR) && (wc[i].status != IBV_WC_WR_FLUSH_ERR) && (wc[i].status != IBV_WC_REM_ACCESS_ERR) && (wc[i].status != IBV_WC_REM_OP_ERR) && (wc[i].status != IBV_WC_LOC_PROT_ERR)) {
+			IBV_WARNING("Unsuccessful completion: %d.\n", wc[i].opcode);
+		} else if((wc[i].status == IBV_WC_RETRY_EXC_ERR) || (wc[i].status == IBV_WC_WR_FLUSH_ERR) || (wc[i].status == IBV_WC_REM_ACCESS_ERR) || (wc[i].status == IBV_WC_REM_OP_ERR) || (wc[i].status == IBV_WC_LOC_PROT_ERR)) {
+			printf("%d: Changing status from %d to %d\n",getpid(),wc[i].status,IBV_WC_SUCCESS);
+			wc[i].status = IBV_WC_SUCCESS;
+		}
+	}
+	PAREP_MPI_ENABLE_CKPT();
+	return rslt;
+	/*int rslt = 0;
 	struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
 	int size, i;
 	
@@ -3570,6 +3785,7 @@ int _poll_cq(struct ibv_cq *cq, int num_entries, struct ibv_wc *wc) {
 				struct internal_ibv_qp *internal_qp = qp_num_to_qp(&qp_list, wc[i].qp_num);
 				wc[i].qp_num = internal_qp->user_qp.qp_num;
 			} else if((wc[i].status == IBV_WC_RETRY_EXC_ERR) || (wc[i].status == IBV_WC_WR_FLUSH_ERR) || (wc[i].status == IBV_WC_REM_ACCESS_ERR) || (wc[i].status == IBV_WC_REM_OP_ERR) || (wc[i].status == IBV_WC_LOC_PROT_ERR)) {
+				printf("%d: Changing status from %d to %d\n",getpid(),wc[i].status,IBV_WC_SUCCESS);
 				wc[i].status = IBV_WC_SUCCESS;
 				struct internal_ibv_qp *internal_qp = qp_num_to_qp(&qp_list, wc[i].qp_num);
 				wc[i].qp_num = internal_qp->user_qp.qp_num;
@@ -3638,23 +3854,25 @@ int _poll_cq(struct ibv_cq *cq, int num_entries, struct ibv_wc *wc) {
 		}
 	}
 	PAREP_MPI_ENABLE_CKPT();
-	return rslt;
+	return rslt;*/
 }
 
 void
 _ack_cq_events(struct ibv_cq *cq, unsigned int nevents)
 {
-	struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
+	return NEXT_IBV_FNC(ibv_ack_cq_events)(cq, nevents);
+	/*struct internal_ibv_cq *internal_cq = ibv_cq_to_internal(cq);
 
 	assert(IS_INTERNAL_IBV_STRUCT(internal_cq));
 
-	return NEXT_IBV_FNC(ibv_ack_cq_events)(internal_cq->real_cq, nevents);
+	return NEXT_IBV_FNC(ibv_ack_cq_events)(internal_cq->real_cq, nevents);*/
 }
 
 struct ibv_ah *
 _create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
 {
-	struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
+	return NEXT_IBV_FNC(ibv_create_ah)(pd, attr);
+	/*struct internal_ibv_pd *internal_pd = ibv_pd_to_internal(pd);
 	struct internal_ibv_ah *internal_ah;
 	struct ibv_ah_attr real_attr;
 	memcpy(&real_attr,attr,sizeof(struct ibv_ah_attr));
@@ -3682,13 +3900,14 @@ _create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
 
 	list_push_back(&ah_list, &internal_ah->elem);
 
-	return &internal_ah->user_ah;
+	return &internal_ah->user_ah;*/
 }
 
 int
 _destroy_ah(struct ibv_ah *ah)
 {
-	struct internal_ibv_ah *internal_ah;
+	return NEXT_IBV_FNC(ibv_destroy_ah)(ah);
+	/*struct internal_ibv_ah *internal_ah;
 	int rslt;
 
 	internal_ah = ibv_ah_to_internal(ah);
@@ -3698,7 +3917,7 @@ _destroy_ah(struct ibv_ah *ah)
 	list_remove(&internal_ah->elem);
 	free(internal_ah);
 
-	return rslt;
+	return rslt;*/
 }
 
 struct ibv_mw *_alloc_mw(struct ibv_pd *pd,

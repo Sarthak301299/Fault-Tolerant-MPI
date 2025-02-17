@@ -58,6 +58,8 @@ int MPI_Ibarrier(MPI_Comm, MPI_Request *);
 int MPI_Abort(MPI_Comm, int);
 
 int MPI_Checkpoint_start();
+
+int MPI_Replica_rearrange(int *, int *);
 #ifdef __cplusplus
 }
 #endif

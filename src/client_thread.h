@@ -19,7 +19,8 @@
 #define CMD_SHRINK_PERFORMED 13
 #define CMD_REM_RECV 20
 #define CMD_REM_RECV_FINISHED 21
-
+#define CMD_INFORM_PREDICT 30
+#define CMD_BLOCK_PREDICT 31
 
 struct parep_mpi_recv_data_list_node {
 	ptpdata *pdata;

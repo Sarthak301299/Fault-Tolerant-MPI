@@ -140,6 +140,7 @@ void parep_mpi_init_heap(address start) {
 }
 
 int expand_heap(size_t sz) {
+	if(sz == 0) return 1;
 	void *exp_heap = mremap((void *)parep_mpi_heap.start,parep_mpi_heap.end-parep_mpi_heap.start,parep_mpi_heap.end-parep_mpi_heap.start+sz,0);
 	if(exp_heap == MAP_FAILED) return 0;
 	assert((address)exp_heap == parep_mpi_heap.start);
@@ -221,7 +222,12 @@ void *parep_mpi_malloc(size_t size) {
 				return NULL;
 			} else {
 				//Double heap size every expansion
-				int success = expand_heap(parep_mpi_heap.end - parep_mpi_heap.start);
+				int success;
+				if((parep_mpi_heap.end - parep_mpi_heap.start) < 0x80000000) {
+					success = expand_heap(parep_mpi_heap.end - parep_mpi_heap.start);
+				} else {
+					success = expand_heap(0x40000000);
+				}
 				if(success == 0) {
 					pthread_mutex_unlock(&heap_free_list_mutex);
 					return NULL;

@@ -1,7 +1,7 @@
 CC=gcc
-LIBDIR=/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi/lib
-INCLPATH=-I/home/phd/21/cdsjsar/Adaptive_Replication/libunwind/include
-LIBPATH=-L/home/phd/21/cdsjsar/Adaptive_Replication/libunwind/lib
+LIBDIR=$(PAREP_MPI_PATH)/lib
+INCLPATH=-I$(PAREP_MPI_LIBUNWIND_PATH)/include
+LIBPATH=-L$(PAREP_MPI_LIBUNWIND_PATH)/lib
 
 HEADERS = mpi-internal.h mpi.h declarations.h full_context.h ibvctx.h mmanager.h mpiProfilerdefs.h ompideclarations.h ompitypedefs.h typedefs.h parep_mpi_assembly.h list.h ibv_internal.h ibvidentifier.h debug.h wrappers.h client_thread.h request_handler.h heap_allocator.h commbuf_cache.h
 LIBOBJS = mpiProfiler.o full_context.o mmanager.o parep_mpi_assembly.o infinibandwrappers.o ibvctx.o list.o wrappers.o client_thread.o request_handler.o heap_allocator.o commbuf_cache.o

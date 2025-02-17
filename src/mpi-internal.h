@@ -121,8 +121,9 @@ static EMPI_Comm eworldComm;
 static EMPI_Comm EMPI_COMM_CMP, EMPI_COMM_REP, EMPI_CMP_REP_INTERCOMM;
 int *repToCmpMap, *cmpToRepMap;
 //extern int *repToCmpMap, *cmpToRepMap;
-static char *workDir = "/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi", *repState = "repState";
-static char *extLibstr = "/home/phd/21/cdsjsar/MVAPICH2/lib/libmpi.so";
+//static char *workDir = "/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi", *repState = "repState";
+//static char *extLibstr = "/home/phd/21/cdsjsar/MVAPICH2/lib/libmpi.so";
+char extLibstr[256];
 
 pid_t parep_mpi_coordinator_pid;
 
@@ -400,7 +401,7 @@ MPI_Op oparr[1024];
 MPI_Request reqarr[1024];
 bool reqinuse[1024];
 
-void initialize_mpi_variables()
+void initialize_mpi_variables();
 int empi_comm_creation(int *,int *,int *,char ***,bool);
 void initialize_common_heap_and_stack(int);
 

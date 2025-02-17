@@ -113,14 +113,19 @@ commbuf_node_t *get_commbuf_node(size_t size) {
 			else delete_commbuf_node(evicted);
 		}
 		ret = commbuf_node_remove(ret,bin);
+		ret->next = NULL;
+		ret->prev = NULL;
 	} else {
 		commbuf_bin_t *bin = &parep_mpi_commbuf_bins[get_commbuf_bin_index(ret->size)];
 		ret = commbuf_node_remove(ret,bin);
+		ret->next = NULL;
+		ret->prev = NULL;
 	}
 	return ret;
 }
 
 void return_commbuf_node(commbuf_node_t *node) {
+	memset(node->commbuf,0,node->size);
 	int evict_index = get_commbuf_bin_index(node->size);
 	commbuf_bin_t *bin = &parep_mpi_commbuf_bins[evict_index];
 	while(commbuf_node_reinsert(node,bin) < 0) {

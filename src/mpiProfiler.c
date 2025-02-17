@@ -26,35 +26,22 @@
    #error "what is happening here?"
 #endif
 
-#ifdef HEAPTRACK
-size_t total_alloc = 0;
-struct timeval tv;
-void *__wrap_malloc(size_t size) {
-	void *ptr = __real_malloc(size);
-	if(getenv("MPI_FT_TRACK_HEAP"))
-	{
-		if(!strcmp(getenv("MPI_FT_TRACK_HEAP"),"1"))
-		{
-			gettimeofday(&tv,NULL);
-			total_alloc += size;
-			fprintf(logfile,"%d %ld\n",total_alloc,1000000 * tv.tv_sec + tv.tv_usec);
-		}
-	}
-	return ptr;
-}
-#endif
-
 double ___ckpt_time[MAX_CKPT];
 int ___ckpt_counter = -1;
 
 void *extLib = NULL;
 void *openLib = NULL;
 
-double mpi_ft_start_time;
-double mpi_ft_end_time;
+double timespec_to_double(struct timespec ts) {
+	return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
 
-double mpi_ft_ckpt_start_time;
-double mpi_ft_ckpt_end_time;
+struct timespec mpi_ft_start_time;
+struct timespec mpi_ft_end_time;
+struct timespec mpi_ft_ckpt_start_time;
+struct timespec mpi_ft_ckpt_end_time;
+struct timespec mpi_ft_replica_rearrange_start_time;
+struct timespec mpi_ft_replica_rearrange_end_time;
 
 struct mpi_ft_comm mpi_ft_comm_null;
 struct mpi_ft_op mpi_ft_op_null;
@@ -174,8 +161,10 @@ bool peertopeerIsEmpty() {
 	return first_peertopeer == NULL;
 }*/
 
-int parep_mpi_sendid = 0;
-int parep_mpi_collective_id = 0;
+int parep_mpi_sendid = (int)0x70000000;
+int parep_mpi_collective_id = (int)0x70000000;
+
+int tagbase = 0;
 
 volatile sig_atomic_t parep_mpi_sighandling_state = 0;
 
@@ -218,6 +207,11 @@ extern volatile int end_wake_thread;
 
 int parep_mpi_coordinator_socket;
 struct sockaddr_un parep_mpi_coordinator_addr;
+
+int shrinkpipe[2];
+pthread_t shrinkthread;
+EMPI_Group shrinkgroup;
+EMPI_Comm shrinkcomm;
 
 struct sockaddr_in parep_mpi_dyn_coordinator_addr;
 
@@ -318,9 +312,12 @@ extern int (*_real_fclose)(FILE *);
 extern FILE *(*_real_fopen)(const char *, const char *);
 extern FILE *(*_real_fopen64)(const char *, const char *);
 
+extern int (*_real_pthread_create)(pthread_t *restrict,const pthread_attr_t *restrict,void *(*)(void *),void *restrict);
+
 extern bin_t parep_mpi_bins[BIN_COUNT];
 extern bin_t parep_mpi_fastbins[FASTBIN_COUNT];
 extern pthread_mutex_t heap_free_list_mutex;
+extern heap_t parep_mpi_heap;
 
 extern commbuf_bin_t parep_mpi_commbuf_bins[COMMBUF_BIN_COUNT];
 
@@ -360,6 +357,8 @@ address parep_mpi_fortran_bp;
 address parep_mpi_fortran_pc;
 
 int parep_mpi_validator_pipe_check = 0;
+
+int parep_mpi_manual_restart = 0;
 
 int parep_mpi_argc;
 char **parep_mpi_argv;
@@ -507,7 +506,7 @@ int MPI_Finalize(void) {
 					if(parep_mpi_failed_proc_recv) {
 						pthread_mutex_unlock(&reqListLock);
 						if(rreq != EMPI_REQUEST_NULL) {
-							EMPI_Cancel(&rreq);
+							//EMPI_Cancel(&rreq);
 							EMPI_Request_free(&rreq);
 						}
 						while(parep_mpi_failed_proc_recv);
@@ -532,11 +531,11 @@ int MPI_Finalize(void) {
 					if(parep_mpi_failed_proc_recv) {
 						pthread_mutex_unlock(&reqListLock);
 						if(sreq != EMPI_REQUEST_NULL) {
-							EMPI_Cancel(&sreq);
+							//EMPI_Cancel(&sreq);
 							EMPI_Request_free(&sreq);
 						}
 						if(rreq != EMPI_REQUEST_NULL) {
-							EMPI_Cancel(&rreq);
+							//EMPI_Cancel(&rreq);
 							EMPI_Request_free(&rreq);
 						}
 						while(parep_mpi_failed_proc_recv);
@@ -552,7 +551,7 @@ int MPI_Finalize(void) {
 					if(parep_mpi_failed_proc_recv) {
 						pthread_mutex_unlock(&reqListLock);
 						if(rreq != EMPI_REQUEST_NULL) {
-							EMPI_Cancel(&rreq);
+							//EMPI_Cancel(&rreq);
 							EMPI_Request_free(&rreq);
 						}
 						while(parep_mpi_failed_proc_recv);
@@ -575,7 +574,7 @@ int MPI_Finalize(void) {
 					if(parep_mpi_failed_proc_recv) {
 						pthread_mutex_unlock(&reqListLock);
 						if(sreq != EMPI_REQUEST_NULL) {
-							EMPI_Cancel(&sreq);
+							//EMPI_Cancel(&sreq);
 							EMPI_Request_free(&sreq);
 						}
 						while(parep_mpi_failed_proc_recv);
@@ -599,11 +598,11 @@ int MPI_Finalize(void) {
 				if(parep_mpi_failed_proc_recv) {
 					pthread_mutex_unlock(&reqListLock);
 					if(sreq != EMPI_REQUEST_NULL) {
-						EMPI_Cancel(&sreq);
+						//EMPI_Cancel(&sreq);
 						EMPI_Request_free(&sreq);
 					}
 					if(rreq != EMPI_REQUEST_NULL) {
-						EMPI_Cancel(&rreq);
+						//EMPI_Cancel(&rreq);
 						EMPI_Request_free(&rreq);
 					}
 					while(parep_mpi_failed_proc_recv);
@@ -618,7 +617,7 @@ int MPI_Finalize(void) {
 				if(parep_mpi_failed_proc_recv) {
 					pthread_mutex_unlock(&reqListLock);
 					if(rreq != EMPI_REQUEST_NULL) {
-						EMPI_Cancel(&rreq);
+						//EMPI_Cancel(&rreq);
 						EMPI_Request_free(&rreq);
 					}
 					while(parep_mpi_failed_proc_recv);
@@ -632,9 +631,9 @@ int MPI_Finalize(void) {
 	} while(ret == 1);
 	pthread_mutex_unlock(&reqListLock);
 	//MPI_Barrier(MPI_COMM_WORLD);
-	mpi_ft_end_time = EMPI_Wtime();
+	clock_gettime(CLOCK_REALTIME,&mpi_ft_end_time);
 	if(myrank == 0) {
-		printf("FT Time taken = %f\n",mpi_ft_end_time-mpi_ft_start_time);
+		printf("FT Time taken = %f\n",(timespec_to_double(mpi_ft_end_time)-timespec_to_double(mpi_ft_start_time)));
 	}
 	//mpi_ft_free_older_collectives(last_collective);
 	last_collective = NULL;
@@ -739,6 +738,23 @@ void parep_mpi_sigusr1_hook(int tid_index, bool is_main_thread,int restore) {
 	}
 }
 
+void handle_sigterm(int sig) {
+	pthread_exit(NULL);
+}
+
+void *shrink_caller(void *arg) {
+	struct sigaction sa;
+	sa.sa_handler = handle_sigterm;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sigaction(SIGTERM,&sa,NULL);
+	int ret = EMPI_Comm_create_group(MPI_COMM_WORLD->eworldComm,shrinkgroup,1234,&shrinkcomm);
+	printf("%d: EMPI_Comm_create_group ret %d shrinkgroup %p shrinkcomm %p\n",getpid(),ret,shrinkgroup,shrinkcomm);
+	int msg = 1234;
+	write(shrinkpipe[1],&msg,sizeof(int));
+	return NULL;
+}
+
 int parep_mpi_checkpoint_init(int ckpt_num) {
 	parep_mpi_ckpt_wait = 0;
 	___ckpt_counter = ckpt_num;
@@ -746,9 +762,10 @@ int parep_mpi_checkpoint_init(int ckpt_num) {
 	int rank;
 	bool is_baseline = true;
 	struct stat st = {0};
-	mpi_ft_ckpt_start_time = EMPI_Wtime();
-	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
-	sprintf(ckpt_name,"/scratch/cdsjsar/checkpoint/%s/%d",getenv("SLURM_JOB_ID"),rank);
+	clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_start_time);
+	if(___ckpt_counter <= 0) rank = parep_mpi_rank;
+	else EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
+	sprintf(ckpt_name,"%s/%d",getenv("PAREP_MPI_WORKDIR"),rank);
 	{
 		int ret;
 		do {
@@ -757,14 +774,14 @@ int parep_mpi_checkpoint_init(int ckpt_num) {
 	}
 	
 	if(ckpt_num >= 3) {
-		sprintf(ckpt_name,"/scratch/cdsjsar/checkpoint/%s/%d/%d",getenv("SLURM_JOB_ID"),rank,ckpt_num-2);
+		sprintf(ckpt_name,"%s/%d/%d",getenv("PAREP_MPI_WORKDIR"),rank,ckpt_num-2);
 		int ret;
 		do {
 			ret = remove(ckpt_name);
 		} while(ret == 0);
 	}
 	
-	sprintf(ckpt_name,"/scratch/cdsjsar/checkpoint/%s/%d/%d",getenv("SLURM_JOB_ID"),rank,ckpt_num);
+	sprintf(ckpt_name,"%s/%d/%d",getenv("PAREP_MPI_WORKDIR"),rank,ckpt_num);
 	if(ckpt_num > 0) is_baseline = false;
 	pthread_mutex_lock(&imm_return_mutex);
 	for(int i = 0; i < num_threads; i++) {
@@ -782,7 +799,7 @@ int parep_mpi_checkpoint_init(int ckpt_num) {
 	}
 	pthread_mutex_unlock(&precheckpoint_mutex);
 	
-	parep_infiniband_cmd(PAREP_IB_PRECHECKPOINT);
+	//parep_infiniband_cmd(PAREP_IB_PRECHECKPOINT);
 	
 	prstat.cur_brk = (address)sbrk(0);
 	parseStatFile();
@@ -901,90 +918,101 @@ int parep_mpi_checkpoint_init(int ckpt_num) {
 		pthread_cond_broadcast(&ib_restored_cond_var);
 		pthread_mutex_unlock(&ib_restored_mutex);
 		
-		mpi_ft_ckpt_end_time = EMPI_Wtime();
-		//printf("%d: Rank %d After I/O %f\n",getpid(),rank,mpi_ft_ckpt_end_time-mpi_ft_ckpt_start_time);
-
+		bool checkpoint_written = false;
 PAREP_MPI_WRITE_CKPT_START:
 		if(___ckpt_counter > 0) {
-			
 			int dyn_sock = socket(AF_INET, SOCK_STREAM, 0);
 			if(dyn_sock == -1) {
 				perror("Failed to create socket");
 				exit(1);
 			}
 			int ret;
+			ssize_t bytes_written;
+			int msgsize = 0;
 			do {
 				ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
 			} while(ret != 0);
 
 			int cmd = CMD_BARRIER;
-
-			write(dyn_sock,&cmd,sizeof(int));
-			write(dyn_sock,&parep_mpi_rank,sizeof(int));
+			
+			while((bytes_written = write(dyn_sock,(&cmd)+msgsize, sizeof(int)-msgsize)) > 0) {
+				msgsize += bytes_written;
+				if(msgsize >= (sizeof(int))) break;
+			}
+			if(bytes_written < 0) printf("%d: Write to server returned %d errno %d dyn_sock %d\n",getpid(),bytes_written,errno,dyn_sock);
+			msgsize = 0;
+			while((bytes_written = write(dyn_sock,(&parep_mpi_rank)+msgsize, sizeof(int)-msgsize)) > 0) {
+				msgsize += bytes_written;
+				if(msgsize >= (sizeof(int))) break;
+			}
+			if(bytes_written < 0) printf("%d: Write to server rank returned %d errno %d dyn_sock %d\n",getpid(),bytes_written,errno,dyn_sock);
 			close(dyn_sock);
 			
-			parep_mpi_validator_pipe_check = 1;
-			unw_cursor_t cursor;
-			unw_context_t uc;
-			unw_word_t ip,ax,bx,cx,dx,di,si,r8,r9,r10,r11,r12,r13,r14,r15;
-			unw_getcontext(&uc);
-			unw_init_local(&cursor, &uc);
-			parep_mpi_num_reg_vals = 0;
-			while (unw_step(&cursor) > 0) {
-				unw_get_reg(&cursor, UNW_REG_IP, &ip);
-				unw_get_reg(&cursor, UNW_X86_64_RAX, &ax);
-				unw_get_reg(&cursor, UNW_X86_64_RBX, &bx);
-				unw_get_reg(&cursor, UNW_X86_64_RCX, &cx);
-				unw_get_reg(&cursor, UNW_X86_64_RDX, &dx);
-				unw_get_reg(&cursor, UNW_X86_64_RDI, &di);
-				unw_get_reg(&cursor, UNW_X86_64_RSI, &si);
-				unw_get_reg(&cursor, UNW_X86_64_R8, &r8);
-				unw_get_reg(&cursor, UNW_X86_64_R9, &r9);
-				unw_get_reg(&cursor, UNW_X86_64_R10, &r10);
-				unw_get_reg(&cursor, UNW_X86_64_R11, &r11);
-				unw_get_reg(&cursor, UNW_X86_64_R12, &r12);
-				unw_get_reg(&cursor, UNW_X86_64_R13, &r13);
-				unw_get_reg(&cursor, UNW_X86_64_R14, &r14);
-				unw_get_reg(&cursor, UNW_X86_64_R15, &r15);
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][0] = (address)ip;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][1] = (address)ax;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][2] = (address)bx;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][3] = (address)cx;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][4] = (address)dx;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][5] = (address)di;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][6] = (address)si;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][7] = (address)r8;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][8] = (address)r9;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][9] = (address)r10;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][10] = (address)r11;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][11] = (address)r12;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][12] = (address)r13;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][13] = (address)r14;
-				parep_mpi_reg_vals[parep_mpi_num_reg_vals][14] = (address)r15;
-				parep_mpi_num_reg_vals++;
-			}
-			parep_mpi_validator_pipe_check = 0;
-			int setjmp_status = setjmp(parep_mpi_replication_initializer);
-			if(setjmp_status == 0) {
-				jmp_buf copy_context;
-				copy_jmp_buf(parep_mpi_replication_initializer, copy_context);
-				newStack = mmap(NULL,TEMP_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-				address cur_pc = getPC(copy_context);
-				// Stack starts from higher address.
-				setRSP(copy_context, ((address)(newStack)) + TEMP_STACK_SIZE - TEMP_STACK_BOTTOM_OFFSET);
-				// Start execution on new temp stack.
-				parep_mpi_longjmp(copy_context, 1);
-			} else if(setjmp_status == 1) {
-				int targ_rank;
-				if(rank < nC) targ_rank = rank;
-				else targ_rank = repToCmpMap[rank-nC];
-				//Get Data Heap and Stack
-				sprintf(ckpt_name,"/scratch/cdsjsar/checkpoint/%s/%d/%d",getenv("SLURM_JOB_ID"),targ_rank,___ckpt_counter);
-				write_heap_and_stack(ckpt_name);
-				parep_mpi_longjmp(parep_mpi_replication_initializer,2);
-			} else if(setjmp_status == 2) {
-				printf("Longjmped to HEAPSTACKRESTORE SIDE after ckpt rank %d myrank %d\n",parep_mpi_rank,rank);
-				munmap(newStack,TEMP_STACK_SIZE);
+			if(!checkpoint_written) {
+				parep_mpi_validator_pipe_check = 1;
+				unw_cursor_t cursor;
+				unw_context_t uc;
+				unw_word_t ip,ax,bx,cx,dx,di,si,r8,r9,r10,r11,r12,r13,r14,r15;
+				unw_getcontext(&uc);
+				unw_init_local(&cursor, &uc);
+				parep_mpi_num_reg_vals = 0;
+				while (unw_step(&cursor) > 0) {
+					unw_get_reg(&cursor, UNW_REG_IP, &ip);
+					unw_get_reg(&cursor, UNW_X86_64_RAX, &ax);
+					unw_get_reg(&cursor, UNW_X86_64_RBX, &bx);
+					unw_get_reg(&cursor, UNW_X86_64_RCX, &cx);
+					unw_get_reg(&cursor, UNW_X86_64_RDX, &dx);
+					unw_get_reg(&cursor, UNW_X86_64_RDI, &di);
+					unw_get_reg(&cursor, UNW_X86_64_RSI, &si);
+					unw_get_reg(&cursor, UNW_X86_64_R8, &r8);
+					unw_get_reg(&cursor, UNW_X86_64_R9, &r9);
+					unw_get_reg(&cursor, UNW_X86_64_R10, &r10);
+					unw_get_reg(&cursor, UNW_X86_64_R11, &r11);
+					unw_get_reg(&cursor, UNW_X86_64_R12, &r12);
+					unw_get_reg(&cursor, UNW_X86_64_R13, &r13);
+					unw_get_reg(&cursor, UNW_X86_64_R14, &r14);
+					unw_get_reg(&cursor, UNW_X86_64_R15, &r15);
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][0] = (address)ip;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][1] = (address)ax;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][2] = (address)bx;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][3] = (address)cx;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][4] = (address)dx;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][5] = (address)di;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][6] = (address)si;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][7] = (address)r8;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][8] = (address)r9;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][9] = (address)r10;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][10] = (address)r11;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][11] = (address)r12;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][12] = (address)r13;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][13] = (address)r14;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][14] = (address)r15;
+					parep_mpi_num_reg_vals++;
+				}
+				parep_mpi_validator_pipe_check = 0;
+				int setjmp_status = setjmp(parep_mpi_replication_initializer);
+				if(setjmp_status == 0) {
+					jmp_buf copy_context;
+					copy_jmp_buf(parep_mpi_replication_initializer, copy_context);
+					newStack = mmap(NULL,TEMP_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+					address cur_pc = getPC(copy_context);
+					// Stack starts from higher address.
+					setRSP(copy_context, ((address)(newStack)) + TEMP_STACK_SIZE - TEMP_STACK_BOTTOM_OFFSET);
+					// Start execution on new temp stack.
+					parep_mpi_longjmp(copy_context, 1);
+				} else if(setjmp_status == 1) {
+					int targ_rank;
+					if(rank < nC) targ_rank = rank;
+					else targ_rank = repToCmpMap[rank-nC];
+					//Get Data Heap and Stack
+					sprintf(ckpt_name,"%s/%d/%d",getenv("PAREP_MPI_WORKDIR"),targ_rank,___ckpt_counter);
+					write_heap_and_stack(ckpt_name);
+					parep_mpi_longjmp(parep_mpi_replication_initializer,2);
+				} else if(setjmp_status == 2) {
+					if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) checkpoint_written = true;
+					printf("Longjmped to HEAPSTACKRESTORE SIDE after ckpt rank %d myrank %d\n",parep_mpi_rank,rank);
+					munmap(newStack,TEMP_STACK_SIZE);
+				}
 			}
 			
 			struct pollfd pfd;
@@ -1027,6 +1055,10 @@ PAREP_MPI_WRITE_CKPT_START:
 		nfds_t nfds = 1;
 		int pollret = -1;
 		int loop = 0;
+		bool redoshrink = false;
+		int num_failed_procs;
+		int *abs_failed_ranks;
+		int *failed_ranks;
 		
 		do {
 			pollret = poll(&pfd,nfds,0);
@@ -1041,18 +1073,46 @@ PAREP_MPI_WRITE_CKPT_START:
 					}
 					assert(cmd == CMD_INFORM_PROC_FAILED);
 					if(cmd == CMD_INFORM_PROC_FAILED) {
-						int num_failed_procs;
-						msgsize = 0;
-						while((bytes_read = read(pfd.fd,(&num_failed_procs)+msgsize, sizeof(int)-msgsize)) > 0) {
-							msgsize += bytes_read;
-							if(msgsize >= (sizeof(int))) break;
-						}
-						int *abs_failed_ranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
-						int *failed_ranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
-						msgsize = 0;
-						while((bytes_read = read(pfd.fd,abs_failed_ranks+msgsize, (sizeof(int) * num_failed_procs)-msgsize)) > 0) {
-							msgsize += bytes_read;
-							if(msgsize >= (sizeof(int) * num_failed_procs)) break;
+						int newnfp;
+						if(redoshrink) {
+							msgsize = 0;
+							while((bytes_read = read(pfd.fd,(&newnfp)+msgsize, sizeof(int)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(int))) break;
+							}
+							printf("%d: newnfp %d num_failed_procs %d\n",getpid(),newnfp,num_failed_procs);
+							num_failed_procs += newnfp;
+							_real_free(failed_ranks);
+							failed_ranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
+							int *tempranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
+							
+							for(int k = 0; k < num_failed_procs - newnfp; k++) {
+								tempranks[k] = abs_failed_ranks[k];
+							}
+							_real_free(abs_failed_ranks);
+							abs_failed_ranks = tempranks;
+							
+							msgsize = 0;
+							while((bytes_read = read(pfd.fd,&(abs_failed_ranks[num_failed_procs-newnfp])+msgsize, (sizeof(int) * newnfp)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(int) * newnfp)) break;
+							}
+							printf("%d: myrank %d absfailranks : ",getpid(),parep_mpi_rank);
+							for(int i = 0; i < num_failed_procs; i++) printf("%d ",abs_failed_ranks[i]);
+							printf("\n");
+						} else {
+							msgsize = 0;
+							while((bytes_read = read(pfd.fd,(&num_failed_procs)+msgsize, sizeof(int)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(int))) break;
+							}
+							abs_failed_ranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
+							failed_ranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
+							msgsize = 0;
+							while((bytes_read = read(pfd.fd,((void *)abs_failed_ranks)+msgsize, (sizeof(int) * num_failed_procs)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(int) * num_failed_procs)) break;
+							}
 						}
 						int myrank;
 						EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
@@ -1093,7 +1153,7 @@ PAREP_MPI_WRITE_CKPT_START:
 						int nCdiff = 0;
 						bool aborting = false;
 						bool switching_to_cmp = false;
-						for (int j = 0; j < num_failed_procs_current;j++) {
+						for (int j = 0; j < num_failed_procs_current; j++) {
 							if(myrank >= nC) {
 								if (repToCmpMap[myrank-nC] == failed_ranks[j]) switching_to_cmp = true;
 							}
@@ -1138,14 +1198,67 @@ PAREP_MPI_WRITE_CKPT_START:
 							EMPI_Group_difference(current_group,current_failed_group,&current_alive_group);
 						}
 						
+						redoshrink = false;
+						
 						_real_free(worldComm_ranks);
 						_real_free(rankadj);
 						_real_free(rankadjrep);
+						
+						EMPI_Comm parep_mpi_new_comm;
+						
+						if(pipe(shrinkpipe) == -1) {
+							printf("%d: Pipe Failed\n",getpid());
+							exit(0);
+						}
+						
+						struct pollfd shrinkfds[2];
+						shrinkfds[0].fd = parep_mpi_coordinator_socket;
+						shrinkfds[0].events = POLLIN;
+						shrinkfds[0].revents = 0;
+						shrinkfds[1].fd = shrinkpipe[0];
+						shrinkfds[1].events = POLLIN;
+						shrinkfds[1].revents = 0;
+						memcpy(&shrinkgroup,&current_alive_group,sizeof(EMPI_Group));
+						
+						pthread_rwlock_unlock(&wrapperLock);
+						
+						_real_pthread_create(&shrinkthread,NULL,shrink_caller,NULL);
+						
+						pollret = poll(shrinkfds,2,-1);
+						assert(pollret > 0);
+						if(shrinkfds[1].revents & POLLIN) {
+							int msg;
+							int msgsize = 0;
+							size_t bytes_read;
+							while((bytes_read = read(shrinkfds[1].fd,(&msg)+msgsize, sizeof(int)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(int))) break;
+							}
+							assert(msg == 1234);
+							close(shrinkpipe[0]);
+							close(shrinkpipe[1]);
+							pthread_join(shrinkthread,NULL);
+						} else if(shrinkfds[0].revents & POLLIN) {
+							if(pollret >= 2) pollret = 1;
+							redoshrink = true;
+							pthread_kill(shrinkthread,SIGTERM);
+							pthread_join(shrinkthread,NULL);
+							close(shrinkpipe[0]);
+							close(shrinkpipe[1]);
+						}
+						
+						pthread_rwlock_wrlock(&wrapperLock);
+						
+						if(redoshrink) continue;
+						
+						printf("%d: Past redo shrink shrinkcomm %p current_alive_group %p shrinkgroup %p\n",getpid(),shrinkcomm,current_alive_group,shrinkgroup);
+						
 						_real_free(abs_failed_ranks);
 						_real_free(failed_ranks);
 						
-						EMPI_Comm parep_mpi_new_comm;
-						EMPI_Comm_create_group(MPI_COMM_WORLD->eworldComm,current_alive_group,1234,&parep_mpi_new_comm);
+						//EMPI_Comm_create_group(MPI_COMM_WORLD->eworldComm,current_alive_group,1234,&parep_mpi_new_comm);
+						
+						memcpy(&parep_mpi_new_comm,&shrinkcomm,sizeof(EMPI_Comm));
 						
 						memcpy(&(MPI_COMM_WORLD->eworldComm),&parep_mpi_new_comm,sizeof(EMPI_Comm));
 						int newrank;
@@ -1231,7 +1344,7 @@ PAREP_MPI_WRITE_CKPT_START:
 						pthread_mutex_unlock(&collectiveLock);
 						pthread_mutex_unlock(&peertopeerLock);
 						
-						if(loop == 0) goto PAREP_MPI_WRITE_CKPT_START;
+						goto PAREP_MPI_WRITE_CKPT_START;
 					}
 				}
 			}
@@ -1246,24 +1359,24 @@ PAREP_MPI_WRITE_CKPT_START:
 		if(rank == parep_mpi_leader_rank) {
 			FILE *fptr;
 			char file[100];
-			sprintf(file,"/scratch/cdsjsar/checkpoint/%s/latest_ckpt",getenv("SLURM_JOB_ID"));
+			sprintf(file,"%s/latest_ckpt",getenv("PAREP_MPI_WORKDIR"));
 			fptr = _real_fopen(file, "wb");
 			fwrite(&___ckpt_counter, sizeof(int), 1, fptr);
 			fflush(fptr);
 			_real_fclose(fptr);
 			if(___ckpt_counter == 0) {
-				if(getenv("PAREP_MPI_MANUAL_CKPT_START") != NULL) {
+				/*if(getenv("PAREP_MPI_MANUAL_CKPT_START") != NULL) {
 					if(strcmp(getenv("PAREP_MPI_MANUAL_CKPT_START"),"1") != 0) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
-				} else parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
+				} else parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);*/
 			} else parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
 		}
-		mpi_ft_ckpt_end_time = EMPI_Wtime();
-		printf("%d: Rank %d Checkpoint time %f\n",getpid(),rank,mpi_ft_ckpt_end_time-mpi_ft_ckpt_start_time);
+		clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_end_time);
+		printf("%d: Rank %d Checkpoint time %f\n",getpid(),rank,timespec_to_double(mpi_ft_ckpt_end_time)-timespec_to_double(mpi_ft_ckpt_start_time));
 		pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
 		return 1;
 	} else {
-		mpi_ft_ckpt_end_time = EMPI_Wtime();
-		printf("%d: Rank %d Baseline Restore I/O time %f\n",getpid(),rank,mpi_ft_ckpt_end_time-mpi_ft_ckpt_start_time);
+		clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_end_time);
+		printf("%d: Rank %d Baseline Restore I/O time %f\n",getpid(),rank,timespec_to_double(mpi_ft_ckpt_end_time)-timespec_to_double(mpi_ft_ckpt_start_time));
 		
 		pthread_mutex_lock(&thread_mutex);
 		for(int i = 1; i < num_threads; i++) {
@@ -1281,7 +1394,6 @@ PAREP_MPI_WRITE_CKPT_START:
 			thread_ready[i] = false;
 		}
 		
-		munmap(tempMap, (prstat.restore_full_end - prstat.restore_start) + TEMP_STACK_SIZE);
 		/*newStack = (char *)unmap_addr[0][0];
 		for(int i = 1; i < unmap_num; i++) {
 			syscall(SYS_munmap,(void *)unmap_addr[i][0],unmap_addr[i][1]-unmap_addr[i][0]);
@@ -1313,6 +1425,16 @@ PAREP_MPI_WRITE_CKPT_START:
 				while((bytes_read = read(pfd.fd,(&out)+msgsize, sizeof(int)-msgsize)) > 0) {
 					msgsize += bytes_read;
 					if(msgsize >= (sizeof(int))) break;
+				}
+				if(out != CMD_BARRIER) {
+					printf("%d: Failed proc during restore barrier immediate out %d bytes_read %d errno %d\n",getpid(),out,bytes_read,errno);
+					//assert(out == CMD_INFORM_PROC_FAILED);
+					pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
+					if(parep_mpi_rank == parep_mpi_leader_rank) {
+						parep_infiniband_cmd(PAREP_IB_KILL_COORDINATOR);
+					}
+					pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
+					while(1);
 				}
 				assert(out == CMD_BARRIER);
 				int fail_ready = 0;
@@ -1352,7 +1474,7 @@ PAREP_MPI_WRITE_CKPT_START:
 						}
 						int *abs_failed_ranks = (int *)_real_malloc(sizeof(int) * (num_failed_procs));
 						msgsize = 0;
-						while((bytes_read = read(pfd.fd,abs_failed_ranks+msgsize, (sizeof(int) * num_failed_procs)-msgsize)) > 0) {
+						while((bytes_read = read(pfd.fd,((void *)abs_failed_ranks)+msgsize, (sizeof(int) * num_failed_procs)-msgsize)) > 0) {
 							msgsize += bytes_read;
 							if(msgsize >= (sizeof(int) * num_failed_procs)) break;
 						}
@@ -1389,9 +1511,11 @@ PAREP_MPI_WRITE_CKPT_START:
 			loop++;
 		} while(loop < 2);
 		
-		parep_infiniband_cmd(PAREP_IB_POSTRESTART);
+		//parep_infiniband_cmd(PAREP_IB_POSTRESTART);
 		
 		parep_infiniband_cmd(PAREP_IB_BARRIER);
+		
+		munmap(tempMap, (prstat.restore_full_end - prstat.restore_start) + TEMP_STACK_SIZE);
 		
 		pthread_mutex_lock(&ib_restored_mutex);
 		for(int i = 1; i < num_threads; i++) {
@@ -1401,6 +1525,17 @@ PAREP_MPI_WRITE_CKPT_START:
 		pthread_mutex_unlock(&ib_restored_mutex);
 		
 		if(___ckpt_counter > 0) {
+			pthread_rwlock_unlock(&wrapperLock);
+			address fsbase;
+			syscall(SYS_arch_prctl,ARCH_GET_FS,&fsbase);
+			*((pid_t *)(fsbase+0x2d4)) = kernel_tid[0];
+			initialize_mpi_variables();
+			int myrank,mysize;
+			int retVal = empi_comm_creation(&myrank,&mysize,&parep_mpi_argc,&parep_mpi_argv,false);
+			initialize_common_heap_and_stack(myrank);
+			pthread_rwlock_wrlock(&wrapperLock);
+			rank = myrank;
+
 			unw_cursor_t cursor; unw_context_t uc;
 			unw_word_t ip;
 			int setjmp_status = setjmp(parep_mpi_replication_initializer);
@@ -1418,7 +1553,7 @@ PAREP_MPI_WRITE_CKPT_START:
 				if(rank < nC) targ_rank = rank;
 				else targ_rank = repToCmpMap[rank-nC];
 				//Get Data Heap and Stack
-				sprintf(ckpt_name,"/scratch/cdsjsar/checkpoint/%s/%d/%d",getenv("SLURM_JOB_ID"),targ_rank,___ckpt_counter);
+				sprintf(ckpt_name,"%s/%d/%d",getenv("PAREP_MPI_WORKDIR"),targ_rank,___ckpt_counter);
 				read_heap_and_stack(ckpt_name);
 				parep_mpi_longjmp(parep_mpi_replication_initializer,2);
 			} else if(setjmp_status == 2) {
@@ -1743,7 +1878,7 @@ PAREP_MPI_WRITE_CKPT_START:
 		}
 		
 		if(___ckpt_counter == 0) {
-			if(getenv("PAREP_MPI_MANUAL_CKPT_START") != NULL) {
+			/*if(getenv("PAREP_MPI_MANUAL_CKPT_START") != NULL) {
 				if(strcmp(getenv("PAREP_MPI_MANUAL_CKPT_START"),"1") != 0) {
 					pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 					if(rank == parep_mpi_leader_rank) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
@@ -1753,7 +1888,7 @@ PAREP_MPI_WRITE_CKPT_START:
 				pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 				if(rank == parep_mpi_leader_rank) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
 				pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
-			}
+			}*/
 		} else {
 			pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 			if(rank == parep_mpi_leader_rank) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
@@ -1761,10 +1896,10 @@ PAREP_MPI_WRITE_CKPT_START:
 		}
 		
 		pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
-		mpi_ft_ckpt_end_time = EMPI_Wtime();
-		if(rank == parep_mpi_leader_rank) printf("%d: Rank %d Restore time %f\n",getpid(),rank,mpi_ft_ckpt_end_time-mpi_ft_ckpt_start_time);
+		clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_end_time);
+		if(rank == parep_mpi_leader_rank) printf("%d: Rank %d Restore time %f\n",getpid(),rank,timespec_to_double(mpi_ft_ckpt_end_time)-timespec_to_double(mpi_ft_ckpt_start_time));
 		pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
-		
+		parep_mpi_restore = 1;
 		return 2;
 	}
 }
@@ -1795,11 +1930,12 @@ void parep_mpi_checkpoint_restore() {
 	int ckpt_num;
 	int rank;
 	bool ckpt_restore = true;
-	mpi_ft_ckpt_start_time = EMPI_Wtime();
-	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
+	clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_start_time);
+	if(___ckpt_counter <= 0) rank = parep_mpi_rank;
+	else EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
 	FILE *fptr;
 	char file[100];
-	sprintf(file,"/scratch/cdsjsar/checkpoint/%s/latest_ckpt",getenv("SLURM_JOB_ID"));
+	sprintf(file,"%s/latest_ckpt",getenv("PAREP_MPI_WORKDIR"));
 	fptr = _real_fopen(file, "rb");
 	if(fptr == NULL) {
 		pthread_mutex_lock(&imm_return_mutex);
@@ -1833,9 +1969,7 @@ void parep_mpi_checkpoint_restore() {
 	}
 	pthread_mutex_unlock(&precheckpoint_mutex);
 	
-	sprintf(ckpt_name,"/scratch/cdsjsar/checkpoint/%s/%d/%d",getenv("SLURM_JOB_ID"),rank,ckpt_num);
-	
-	parep_mpi_pmi_fd = (getenv("PMI_FD") == NULL) ? -1 : atoi(getenv("PMI_FD"));
+	sprintf(ckpt_name,"%s/%d/%d",getenv("PAREP_MPI_WORKDIR"),rank,ckpt_num);
 	
 	int dyn_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if(dyn_sock == -1) {
@@ -1915,7 +2049,7 @@ void parep_mpi_checkpoint_restore() {
 		}
 		pthread_mutex_unlock(&threadcontext_write_mutex);
 		
-		parep_infiniband_cmd(PAREP_IB_CLEAN_COORDINATOR);
+		//parep_infiniband_cmd(PAREP_IB_CLEAN_COORDINATOR);
 		
 		init_ckpt_restore(ckpt_name);
 		//asm volatile ("lock cmpxchgl %3, %0; setz %1" : "+m"(writing_ckpt_futex), "=q"(writing_ckpt_check) : "a"(1), "r"(0) : "memory", "rax");
@@ -2040,10 +2174,19 @@ void parep_mpi_restore_messages() {
 			sendnums[pdata->target]++;
 			if(cmpToRepMap[pdata->target] != -1) sendnums[cmpToRepMap[pdata->target]+nC]++;
 			if(cmpToRepMap[pdata->target] == -1) {
-				if(!pdata->completerep) pdata->completerep = true;
+				if(!pdata->completerep) {
+					pdata->completerep = true;
+					*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+				}
+				//New code Take Care!!!
+				if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) {
+					if(!pdata->completecmp) {
+						pdata->completecmp = true;
+						*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+					}
+				}
 			}
-		}
-		else if(pdata->type == MPI_FT_RECV) {
+		} else if(pdata->type == MPI_FT_RECV) {
 			if(pdata->completecmp && pdata->completerep) {
 				recvnums[pdata->target]++;
 				if(cmpToRepMap[pdata->target] != -1) recvnums[cmpToRepMap[pdata->target]+nC]++;
@@ -2069,8 +2212,7 @@ void parep_mpi_restore_messages() {
 					pdata->completecmp = true;
 					pdata->completerep = false;
 				}
-			}
-			else if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+			} else if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) {
 				if(!pdata->completecmp || !pdata->completerep) {
 					int retVal;
 					int size;
@@ -2100,12 +2242,37 @@ void parep_mpi_restore_messages() {
   //Identify items from sendnums that were not in recvfrommenums and resend them
 	//Identify items from recvnums that were not in senttomenums and mark them to be skipped
 	allrecvids = (int *)_real_malloc(array_sum(recvnums,nC+nR)*sizeof(int));
-	allsendids = (int *)_real_malloc(array_sum(recvfrommenums,nC+nR)*sizeof(int));	
+	allsendids = (int *)_real_malloc(array_sum(recvfrommenums,nC+nR)*sizeof(int));
 	
 	recvnumsdispls[0] = 0;
 	recvfrommenumsdispls[0] = 0;
 	index = 0;
+	int *indices = (int *)_real_malloc((nC+nR)*sizeof(int));
 	for(int i = 0; i<nC+nR;i++) {
+		indices[i] = 0;
+		if(i > 0) recvnumsdispls[i] = recvnumsdispls[i-1] + recvnums[i-1];
+		if(i > 0) recvfrommenumsdispls[i] = recvfrommenumsdispls[i-1] + recvfrommenums[i-1];
+	}
+	
+	pdata = first_peertopeer;
+	while(pdata != NULL) {
+		if((pdata->type == MPI_FT_RECV) && pdata->completecmp && pdata->completerep) {
+			int cmptarg = pdata->target;
+			int reptarg = cmpToRepMap[pdata->target] + nC;
+			index = recvnumsdispls[cmptarg];
+			allrecvids[index + indices[cmptarg]] = pdata->id;
+			indices[cmptarg]++;
+			if(cmpToRepMap[pdata->target] != -1) {
+				index = recvnumsdispls[reptarg];
+				allrecvids[index + indices[reptarg]] = pdata->id;
+				indices[reptarg]++;
+			}
+		}
+		pdata = pdata->prev;
+	}
+	_real_free(indices);
+	
+	/*for(int i = 0; i<nC+nR;i++) {
 		pdata = first_peertopeer;
 		while(pdata != NULL) {
 			if((pdata->type == MPI_FT_RECV) && ((pdata->target == i) || ((cmpToRepMap[pdata->target] != -1) && ((cmpToRepMap[pdata->target]+nC) == i))) && pdata->completecmp && pdata->completerep) {
@@ -2116,11 +2283,297 @@ void parep_mpi_restore_messages() {
 		}
 		if(i > 0) recvnumsdispls[i] = recvnumsdispls[i-1] + recvnums[i-1];
 		if(i > 0) recvfrommenumsdispls[i] = recvfrommenumsdispls[i-1] + recvfrommenums[i-1];
-	}
+	}*/
 	
 	EMPI_Alltoallv(allrecvids,recvnums,recvnumsdispls,EMPI_INT,allsendids,recvfrommenums,recvfrommenumsdispls,EMPI_INT,MPI_COMM_WORLD->eworldComm);
 	
 	index = 0;
+	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+		pdata = first_peertopeer;
+		while(pdata != NULL) {
+			if((pdata->type == MPI_FT_SEND)) {
+				int cmptarg = pdata->target;
+				int reptarg = cmpToRepMap[pdata->target]+nC;
+				bool cmpresend = true;
+				bool represend = (cmpToRepMap[pdata->target] != -1) && (cmpToRepMap[cmprank] == -1);
+				EMPI_Status status;
+				index = recvfrommenumsdispls[cmptarg];
+				for(int j = 0; j<recvfrommenums[cmptarg];j++) {
+					if(allsendids[index+j] == pdata->id) {
+						pdata->completecmp = true;
+						if(pdata->req != NULL) {
+							if((*(pdata->req) != NULL) && (*(pdata->req) != MPI_REQUEST_NULL)) {
+								*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+							}
+						}
+						allsendids[index+j] = -1;
+						cmpresend  = false;
+					}
+				}
+				if(represend) {
+					index = recvfrommenumsdispls[reptarg];
+					for(int j = 0; j<recvfrommenums[reptarg];j++) {
+						if(allsendids[index+j] == pdata->id) {
+							pdata->completerep = true;
+							if(pdata->req != NULL) {
+								if((*(pdata->req) != NULL) && (*(pdata->req) != MPI_REQUEST_NULL)) {
+									*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+								}
+							}
+							allsendids[index+j] = -1;
+							represend  = false;
+						}
+					}
+				}
+				if(cmpresend) {
+					int retVal = 0;
+					bool no_req_exists;
+					void *tmpbufloc;
+					if(!(pdata->completecmp)) {
+						tmpbufloc = (*(pdata->req))->bufloc;
+					}
+					
+					no_req_exists = (pdata->req == NULL);
+					if(no_req_exists) {
+						pdata->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+						*(pdata->req) = (MPI_Request)parep_mpi_malloc(sizeof(struct mpi_ft_request));
+						(*(pdata->req))->reqcmp = (EMPI_Request *)parep_mpi_malloc(sizeof(EMPI_Request));
+						(*(pdata->req))->reqrep = (EMPI_Request *)parep_mpi_malloc(sizeof(EMPI_Request));
+						*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+						*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+					} else {
+						*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+						pdata->completecmp = false;
+					}
+					
+					int extracount;
+					int dis;
+					int size;
+					EMPI_Type_size(pdata->dt->edatatype,&size);
+					dis = pdata->count*size;
+					if(size >= sizeof(int)) extracount = 1;
+					else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					else extracount = (((int)sizeof(int))/size) + 1;
+					
+					retVal = EMPI_Isend (pdata->buf, (pdata->count) + extracount, pdata->dt->edatatype, pdata->target, pdata->tag, (pdata->comm->EMPI_COMM_CMP), ((*(pdata->req))->reqcmp));
+					int flag = 0;
+					if(pdata->completecmp) {
+						do {
+							EMPI_Test(((*(pdata->req))->reqcmp),&flag,&status);
+						} while(flag == 0);
+						if(no_req_exists) {
+							parep_mpi_free((*(pdata->req))->reqcmp);
+							parep_mpi_free((*(pdata->req))->reqrep);
+							parep_mpi_free(*(pdata->req));
+							*(pdata->req) = MPI_REQUEST_NULL;
+							parep_mpi_free(pdata->req);
+							pdata->req = NULL;
+						}
+					} else {
+						(*(pdata->req))->bufloc = tmpbufloc;
+						(*(pdata->req))->status.count = (pdata->count);
+						(*(pdata->req))->status.MPI_SOURCE = pdata->target;
+						(*(pdata->req))->status.MPI_TAG = pdata->tag;
+						(*(pdata->req))->status.MPI_ERROR = 0;
+						(*(pdata->req))->complete = false;
+						(*(pdata->req))->comm = pdata->comm;
+						(*(pdata->req))->type = MPI_FT_SEND_REQUEST;
+						(*(pdata->req))->storeloc = pdata; 
+					}
+				}
+				if(represend) {
+					int retVal = 0;
+					bool no_req_exists;
+					void *tmpbufloc;
+					if(!(pdata->completerep && (cmpToRepMap[myrank] == -1))) {
+						tmpbufloc = (*(pdata->req))->bufloc;
+					}
+					
+					no_req_exists = (pdata->req == NULL);
+					if(no_req_exists) {
+						pdata->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+						*(pdata->req) = (MPI_Request)parep_mpi_malloc(sizeof(struct mpi_ft_request));
+						(*(pdata->req))->reqcmp = (EMPI_Request *)parep_mpi_malloc(sizeof(EMPI_Request));
+						(*(pdata->req))->reqrep = (EMPI_Request *)parep_mpi_malloc(sizeof(EMPI_Request));
+						*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+						*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+					} else {
+						*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+						if(cmpToRepMap[myrank] == -1) pdata->completerep = false;
+						else pdata->completerep = true;
+					}
+					
+					int extracount;
+					int dis;
+					int size;
+					EMPI_Type_size(pdata->dt->edatatype,&size);
+					dis = pdata->count*size;
+					if(size >= sizeof(int)) extracount = 1;
+					else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					else extracount = (((int)sizeof(int))/size) + 1;
+					
+					if(cmpToRepMap[myrank] == -1) retVal = EMPI_Isend (pdata->buf, (pdata->count) + extracount, pdata->dt->edatatype, cmpToRepMap[pdata->target], pdata->tag, (pdata->comm->EMPI_CMP_REP_INTERCOMM), ((*(pdata->req))->reqrep));
+					int flag = (cmpToRepMap[myrank] != -1);
+					if((pdata->completerep && (cmpToRepMap[myrank] == -1))) {
+						do {
+							if(cmpToRepMap[myrank] == -1) EMPI_Test(((*(pdata->req))->reqrep),&flag,&status);
+						} while(flag == 0);
+						if(no_req_exists) {
+							parep_mpi_free((*(pdata->req))->reqcmp);
+							parep_mpi_free((*(pdata->req))->reqrep);
+							parep_mpi_free(*(pdata->req));
+							*(pdata->req) = MPI_REQUEST_NULL;
+							parep_mpi_free(pdata->req);
+							pdata->req = NULL;
+						}
+					} else {
+						(*(pdata->req))->bufloc = tmpbufloc;
+						(*(pdata->req))->status.count = (pdata->count);
+						(*(pdata->req))->status.MPI_SOURCE = pdata->target;
+						(*(pdata->req))->status.MPI_TAG = pdata->tag;
+						(*(pdata->req))->status.MPI_ERROR = 0;
+						(*(pdata->req))->complete = false;
+						(*(pdata->req))->comm = pdata->comm;
+						(*(pdata->req))->type = MPI_FT_SEND_REQUEST;
+						(*(pdata->req))->storeloc = pdata; 
+					}
+				}
+			}
+			pdata = pdata->prev;
+		}
+		index = 0;
+		for(int i = 0; i < nC+nR; i++) {
+			if(i != cmprank && (cmpToRepMap[cmprank] == -1 || i != cmpToRepMap[cmprank] + nC)) {
+				if(((i < nC) || (cmpToRepMap[cmprank] == -1))) {
+					for(int j = 0; j<recvfrommenums[i];j++) {
+						if(allsendids[index+j] != -1) {
+							if(allsendids[index+j] >= parep_mpi_sendid) {
+								struct skiplist *skipitem = (struct skiplist *)parep_mpi_malloc(sizeof(struct skiplist));
+								skipitem->id = allsendids[index+j];
+								if(i < nC) {
+									skipitem->next = skipcmplist;
+									skipcmplist = skipitem;
+								} else {
+									skipitem->next = skipreplist;
+									skipreplist = skipitem;
+								}
+							}
+						}
+					}
+				}
+			}
+			index = index + recvfrommenums[i];
+		}
+	} else if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) {
+		pdata = first_peertopeer;
+		while(pdata != NULL) {
+			if((pdata->type == MPI_FT_SEND) && (cmpToRepMap[pdata->target] != -1)) {
+				int cmptarg = pdata->target;
+				int reptarg = cmpToRepMap[pdata->target]+nC;
+				bool resend = true;
+				EMPI_Status status;
+				index = recvfrommenumsdispls[reptarg];
+				for(int j = 0; j<recvfrommenums[reptarg];j++) {
+					if(allsendids[index+j] == pdata->id) {
+						pdata->completecmp = true;
+						if(pdata->req != NULL) {
+							if((*(pdata->req) != NULL) && (*(pdata->req) != MPI_REQUEST_NULL)) {
+								*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+							}
+						}
+						pdata->completerep = true;
+						if(pdata->req != NULL) {
+							if((*(pdata->req) != NULL) && (*(pdata->req) != MPI_REQUEST_NULL)) {
+								*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+							}
+						}
+						allsendids[index+j] = -1;
+						resend  = false;
+					}
+				}
+				if(resend) {
+					int retVal = 0;
+					bool no_req_exists;
+					void *tmpbufloc;
+					if(!pdata->completecmp) {
+						pdata->completerep = false;
+						pdata->completecmp = true;
+					}
+					if(!(pdata->completerep)) {
+						tmpbufloc = (*(pdata->req))->bufloc;
+					}
+					
+					no_req_exists = (pdata->req == NULL);
+					if(no_req_exists) {
+						pdata->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+						*(pdata->req) = (MPI_Request)parep_mpi_malloc(sizeof(struct mpi_ft_request));
+						(*(pdata->req))->reqcmp = (EMPI_Request *)parep_mpi_malloc(sizeof(EMPI_Request));
+						(*(pdata->req))->reqrep = (EMPI_Request *)parep_mpi_malloc(sizeof(EMPI_Request));
+						*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+						*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+					} else {
+						*((*(pdata->req))->reqcmp) = EMPI_REQUEST_NULL;
+						*((*(pdata->req))->reqrep) = EMPI_REQUEST_NULL;
+					}
+					
+					int extracount;
+					int dis;
+					int size;
+					EMPI_Type_size(pdata->dt->edatatype,&size);
+					dis = pdata->count*size;
+					if(size >= sizeof(int)) extracount = 1;
+					else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+					else extracount = (((int)sizeof(int))/size) + 1;
+					retVal = EMPI_Isend(pdata->buf, (pdata->count) + extracount, pdata->dt->edatatype, cmpToRepMap[pdata->target], pdata->tag, (pdata->comm->EMPI_COMM_REP),((*(pdata->req))->reqrep));
+					int flag = 0;
+					if(pdata->completerep) {
+						do {
+							EMPI_Test(((*(pdata->req))->reqrep),&flag,&status);
+						} while(flag == 0);
+						if(no_req_exists) {
+							parep_mpi_free((*(pdata->req))->reqcmp);
+							parep_mpi_free((*(pdata->req))->reqrep);
+							parep_mpi_free(*(pdata->req));
+							*(pdata->req) = MPI_REQUEST_NULL;
+							parep_mpi_free(pdata->req);
+							pdata->req = NULL;
+						}
+					} else {
+						(*(pdata->req))->bufloc = tmpbufloc;
+						(*(pdata->req))->status.count = (pdata->count);
+						(*(pdata->req))->status.MPI_SOURCE = pdata->target;
+						(*(pdata->req))->status.MPI_TAG = pdata->tag;
+						(*(pdata->req))->status.MPI_ERROR = 0;
+						(*(pdata->req))->complete = false;
+						(*(pdata->req))->comm = pdata->comm;
+						(*(pdata->req))->type = MPI_FT_SEND_REQUEST;
+						(*(pdata->req))->storeloc = pdata;
+					}
+				}
+			}
+			pdata = pdata->prev;
+		}
+		index = 0;
+		for(int i = 0; i < nC+nR; i++) {
+			if(i != repToCmpMap[reprank] &&  i != reprank + nC) {
+				if(i >= nC) {
+					for(int j = 0; j<recvfrommenums[i];j++) {
+						if(allsendids[index+j] != -1) {
+							if(allsendids[index+j] >= parep_mpi_sendid) {
+								struct skiplist *skipitem = (struct skiplist *)parep_mpi_malloc(sizeof(struct skiplist));
+								skipitem->id = allsendids[index+j];
+								skipitem->next = skipreplist;
+								skipreplist = skipitem;
+							}
+						}
+					}
+				}
+			}
+			index = index + recvfrommenums[i];
+		}
+	}
+	
+	/*index = 0;
 	for(int i = 0; i<nC+nR;i++) {
 		if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) {
 			if(i != cmprank && (cmpToRepMap[cmprank] == -1 || i != cmpToRepMap[cmprank] + nC)) {
@@ -2347,7 +2800,7 @@ void parep_mpi_restore_messages() {
 			}
 		}
 		index = index + recvfrommenums[i];
-	}
+	}*/
 	_real_free(allrecvids);
 	_real_free(allsendids);
 	
@@ -2404,40 +2857,46 @@ void parep_mpi_restore_messages() {
 							else EMPI_Recv(curargs->buf,count+extracount,EMPI_BYTE,j-nC,stat.EMPI_TAG,comm->EMPI_COMM_REP,&stat);
 							
 							memcpy(&(curargs->id),(curargs->buf) + (count * size),sizeof(int));
-							MPI_Status status;
-							memcpy(&(status.status),&(stat),sizeof(EMPI_Status));
-							status.count = count;
-							if(stat.EMPI_TAG == EMPI_ANY_TAG) status.MPI_TAG = MPI_ANY_TAG;
-							else status.MPI_TAG = stat.EMPI_TAG;
-							status.MPI_ERROR = stat.EMPI_ERROR;
-							status.MPI_SOURCE = stat.EMPI_SOURCE;
-							if(j >= nC) status.MPI_SOURCE = repToCmpMap[stat.EMPI_SOURCE];
-							
-							curargs->type = MPI_FT_RECV;
-							curargs->count = count;
-							curargs->dt = MPI_BYTE;
-							curargs->target = status.MPI_SOURCE;
-							curargs->tag = status.MPI_TAG;
-							curargs->comm = comm;
-							curargs->completecmp = true;
-							curargs->completerep = true;
-							
-							curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
-							*(curargs->req) = MPI_REQUEST_NULL;
-							
-							pthread_mutex_lock(&peertopeerLock);
-							if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
-							else first_peertopeer = curargs;
-							curargs->prev = NULL;
-							curargs->next = last_peertopeer;
-							last_peertopeer = curargs;
-							pthread_cond_signal(&peertopeerCond);
-							pthread_mutex_unlock(&peertopeerLock);
-							
-							pthread_mutex_lock(&recvDataListLock);
-							recvDataListInsert(curargs);
-							pthread_cond_signal(&reqListCond);
-							pthread_mutex_unlock(&recvDataListLock);
+							if((curargs->id & 0xF0000000) != 0x70000000) {
+								printf("%d: Wrong id probed at restore_messages %p myrank %d src %d\n",getpid(),curargs->id,myrank,j);
+								parep_mpi_free(curargs->buf);
+								parep_mpi_free(curargs);
+							} else {
+								MPI_Status status;
+								memcpy(&(status.status),&(stat),sizeof(EMPI_Status));
+								status.count = count;
+								if(stat.EMPI_TAG == EMPI_ANY_TAG) status.MPI_TAG = MPI_ANY_TAG;
+								else status.MPI_TAG = stat.EMPI_TAG;
+								status.MPI_ERROR = stat.EMPI_ERROR;
+								status.MPI_SOURCE = stat.EMPI_SOURCE;
+								if(j >= nC) status.MPI_SOURCE = repToCmpMap[stat.EMPI_SOURCE];
+								
+								curargs->type = MPI_FT_RECV;
+								curargs->count = count;
+								curargs->dt = MPI_BYTE;
+								curargs->target = status.MPI_SOURCE;
+								curargs->tag = status.MPI_TAG;
+								curargs->comm = comm;
+								curargs->completecmp = true;
+								curargs->completerep = true;
+								
+								curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+								*(curargs->req) = MPI_REQUEST_NULL;
+								
+								pthread_mutex_lock(&peertopeerLock);
+								if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
+								else first_peertopeer = curargs;
+								curargs->prev = NULL;
+								curargs->next = last_peertopeer;
+								last_peertopeer = curargs;
+								pthread_cond_signal(&peertopeerCond);
+								pthread_mutex_unlock(&peertopeerLock);
+								
+								pthread_mutex_lock(&recvDataListLock);
+								recvDataListInsert(curargs);
+								pthread_cond_signal(&reqListCond);
+								pthread_mutex_unlock(&recvDataListLock);
+							}
 						}
 					} while(flag != 0);
 				}
@@ -2479,39 +2938,45 @@ void parep_mpi_restore_messages() {
 							EMPI_Recv(curargs->buf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_COMM_CMP,&stat);
 							
 							memcpy(&(curargs->id),(curargs->buf) + (count * size),sizeof(int));
-							MPI_Status status;
-							memcpy(&(status.status),&(stat),sizeof(EMPI_Status));
-							status.count = count;
-							if(stat.EMPI_TAG == EMPI_ANY_TAG) status.MPI_TAG = MPI_ANY_TAG;
-							else status.MPI_TAG = stat.EMPI_TAG;
-							status.MPI_ERROR = stat.EMPI_ERROR;
-							status.MPI_SOURCE = stat.EMPI_SOURCE;
-							
-							curargs->type = MPI_FT_RECV;
-							curargs->count = count;
-							curargs->dt = MPI_BYTE;
-							curargs->target = status.MPI_SOURCE;
-							curargs->tag = status.MPI_TAG;
-							curargs->comm = comm;
-							curargs->completecmp = true;
-							curargs->completerep = true;
-							
-							curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
-							*(curargs->req) = MPI_REQUEST_NULL;
-							
-							pthread_mutex_lock(&peertopeerLock);
-							if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
-							else first_peertopeer = curargs;
-							curargs->prev = NULL;
-							curargs->next = last_peertopeer;
-							last_peertopeer = curargs;
-							pthread_cond_signal(&peertopeerCond);
-							pthread_mutex_unlock(&peertopeerLock);
-							
-							pthread_mutex_lock(&recvDataListLock);
-							recvDataListInsert(curargs);
-							pthread_cond_signal(&reqListCond);
-							pthread_mutex_unlock(&recvDataListLock);
+							if((curargs->id & 0xF0000000) != 0x70000000) {
+								printf("%d: Wrong id probed at restore_messages %p myrank %d src %d\n",getpid(),curargs->id,myrank,j);
+								parep_mpi_free(curargs->buf);
+								parep_mpi_free(curargs);
+							} else {
+								MPI_Status status;
+								memcpy(&(status.status),&(stat),sizeof(EMPI_Status));
+								status.count = count;
+								if(stat.EMPI_TAG == EMPI_ANY_TAG) status.MPI_TAG = MPI_ANY_TAG;
+								else status.MPI_TAG = stat.EMPI_TAG;
+								status.MPI_ERROR = stat.EMPI_ERROR;
+								status.MPI_SOURCE = stat.EMPI_SOURCE;
+								
+								curargs->type = MPI_FT_RECV;
+								curargs->count = count;
+								curargs->dt = MPI_BYTE;
+								curargs->target = status.MPI_SOURCE;
+								curargs->tag = status.MPI_TAG;
+								curargs->comm = comm;
+								curargs->completecmp = true;
+								curargs->completerep = true;
+								
+								curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+								*(curargs->req) = MPI_REQUEST_NULL;
+								
+								pthread_mutex_lock(&peertopeerLock);
+								if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
+								else first_peertopeer = curargs;
+								curargs->prev = NULL;
+								curargs->next = last_peertopeer;
+								last_peertopeer = curargs;
+								pthread_cond_signal(&peertopeerCond);
+								pthread_mutex_unlock(&peertopeerLock);
+								
+								pthread_mutex_lock(&recvDataListLock);
+								recvDataListInsert(curargs);
+								pthread_cond_signal(&reqListCond);
+								pthread_mutex_unlock(&recvDataListLock);
+							}
 						}
 					} while(flag != 0);
 				}
@@ -2589,6 +3054,7 @@ void parep_mpi_send_replication_data(int dest_rank) {
 	extern address _edata;
 	extern address __bss_start;
 	extern address _end;
+	tagbase = 0;
 	address my_req_null = (address)MPI_REQUEST_NULL;
 	
 	address offset;
@@ -2603,11 +3069,11 @@ void parep_mpi_send_replication_data(int dest_rank) {
 	processContext.rsp = getRSP(parep_mpi_replication_initializer);
 	processContext.rbp = getRBP(parep_mpi_replication_initializer);
 	
-	EMPI_Send(&fsbasekey,sizeof(address),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&processContext,sizeof(Context),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&parep_mpi_replication_initializer,sizeof(jmp_buf),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(&fsbasekey,sizeof(address),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&processContext,sizeof(Context),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&parep_mpi_replication_initializer,sizeof(jmp_buf),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
-	EMPI_Send(&parep_mpi_num_reg_vals,1,EMPI_INT,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(&parep_mpi_num_reg_vals,1,EMPI_INT,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
 	for(int i = 0; i < parep_mpi_num_reg_vals; i++) {
 		for(int k = 0; k < 15; k++) {
@@ -2615,8 +3081,8 @@ void parep_mpi_send_replication_data(int dest_rank) {
 			mapname[0] = '\0';
 			if((parep_mpi_reg_vals[i][k] == (address)NULL) || (parep_mpi_reg_vals[i][k] <= (address)(&(_end))) || (((address)parep_mpi_ext_heap_mapping <= parep_mpi_reg_vals[i][k]) && (((address)parep_mpi_ext_heap_mapping + parep_mpi_ext_heap_size) > parep_mpi_reg_vals[i][k])) || ((parep_mpi_new_stack_start <= parep_mpi_reg_vals[i][k]) && (parep_mpi_new_stack_end > parep_mpi_reg_vals[i][k]))) {
 				offset = parep_mpi_reg_vals[i][k];
-				EMPI_Send(mapname,MAX_PATH_LEN,EMPI_CHAR,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-				EMPI_Send(&offset,sizeof(address),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+				EMPI_Send(mapname,MAX_PATH_LEN,EMPI_CHAR,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+				EMPI_Send(&offset,sizeof(address),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 			} else {
 				bool found = false;
 				for(int j = 0; j < num_mappings; j++) {
@@ -2636,8 +3102,8 @@ void parep_mpi_send_replication_data(int dest_rank) {
 					mapname[0] = '\0';
 					offset = parep_mpi_reg_vals[i][k];
 				}
-				EMPI_Send(mapname,MAX_PATH_LEN,EMPI_CHAR,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-				EMPI_Send(&offset,sizeof(address),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+				EMPI_Send(mapname,MAX_PATH_LEN,EMPI_CHAR,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+				EMPI_Send(&offset,sizeof(address),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 			}
 		}
 	}
@@ -2650,50 +3116,100 @@ void parep_mpi_send_replication_data(int dest_rank) {
 	memcpy(&mpi_ft_comm_self_dup,&mpi_ft_comm_self,sizeof(struct mpi_ft_comm));
 	
 	//SEND DATA
-	EMPI_Send(&init_data_seg_size,1,EMPI_INT,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&uinit_data_seg_size,1,EMPI_INT,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(&init_data_seg_size,1,EMPI_INT,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&uinit_data_seg_size,1,EMPI_INT,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
-	EMPI_Send(&__data_start,init_data_seg_size,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(reqarr,1024*sizeof(MPI_Request),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(reqinuse,1024*sizeof(bool),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	if(parep_mpi_fortran_binding_used) EMPI_Send(&__bss_start,uinit_data_seg_size,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(&__data_start,init_data_seg_size,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(reqarr,1024*sizeof(MPI_Request),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(reqinuse,1024*sizeof(bool),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	if(parep_mpi_fortran_binding_used) {
+		EMPI_Send(&__bss_start,uinit_data_seg_size,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+		tagbase++;
+	}
 	
 	memcpy(&mpi_ft_comm_world,&mpi_ft_comm_world_dup,sizeof(struct mpi_ft_comm));
 	memcpy(&mpi_ft_comm_self,&mpi_ft_comm_self_dup,sizeof(struct mpi_ft_comm));
 	
 	//SEND HEAP
+	EMPI_Send(&parep_mpi_ext_heap_size,sizeof(size_t),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	pthread_mutex_lock(&heap_free_list_mutex);
-	EMPI_Send(&parep_mpi_ext_heap_size,sizeof(size_t),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(parep_mpi_bins,sizeof(bin_t)*BIN_COUNT,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(parep_mpi_fastbins,sizeof(bin_t)*FASTBIN_COUNT,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send((void *)parep_mpi_ext_heap_mapping,parep_mpi_ext_heap_size,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(parep_mpi_bins,sizeof(bin_t)*BIN_COUNT,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(parep_mpi_fastbins,sizeof(bin_t)*FASTBIN_COUNT,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	heap_node_t *headnode = (heap_node_t *)parep_mpi_ext_heap_mapping;
+	footer_t *footnode;
+	
+	for(int k = 0; k < parep_mpi_ext_heap_size/0x20000000; k++) {
+		int size = 0x20000000;
+		if(((long)k*(long)0x20000000) + size > (parep_mpi_ext_heap_size)) size = parep_mpi_ext_heap_size - ((long)k*(long)0x20000000);
+		EMPI_Send(parep_mpi_ext_heap_mapping + ((long)k*(long)0x20000000),size,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	}
+	/*while((address)headnode < (address)(parep_mpi_ext_heap_mapping+parep_mpi_ext_heap_size)) {
+		footnode = get_foot(headnode);
+		EMPI_Send(headnode,sizeof(heap_node_t),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+		if((!GET_HOLE(headnode->hole_and_size)) && (!GET_FAST(headnode->hole_and_size))) {
+			if(((address)footnode) - ((address)headnode) - sizeof(heap_node_t) > 0) {
+				EMPI_Send((void *)(((address)headnode) + sizeof(heap_node_t)),((address)footnode) - ((address)headnode) - sizeof(heap_node_t),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+				tagbase++;
+			}
+		}
+		EMPI_Send(footnode,sizeof(footer_t),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+		headnode = (heap_node_t *)(((address)footnode) + sizeof(footer_t));
+	}*/
 	pthread_mutex_unlock(&heap_free_list_mutex);
 	
 	//SEND STACK
-	EMPI_Send((void *)parep_mpi_new_stack_start,parep_mpi_new_stack_size,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send((void *)parep_mpi_new_stack_start,parep_mpi_new_stack_size,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
-	EMPI_Send(&my_req_null,sizeof(address),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&first_peertopeer,sizeof(ptpdata *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&last_peertopeer,sizeof(ptpdata *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&last_collective,sizeof(clcdata *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(&my_req_null,sizeof(address),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&first_peertopeer,sizeof(ptpdata *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&last_peertopeer,sizeof(ptpdata *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&last_collective,sizeof(clcdata *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
-	EMPI_Send(parep_mpi_commbuf_bins,sizeof(commbuf_bin_t)*COMMBUF_BIN_COUNT,EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(parep_mpi_commbuf_bins,sizeof(commbuf_bin_t)*COMMBUF_BIN_COUNT,EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
-	EMPI_Send(&recvDataHead,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&recvDataTail,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&recvDataRedHead,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&recvDataRedTail,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&skipcmplist,sizeof(struct skiplist *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&skipreplist,sizeof(struct skiplist *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&skipredlist,sizeof(struct skiplist *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&reqHead,sizeof(reqNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&reqTail,sizeof(reqNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&openFileHead,sizeof(openFileNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&openFileTail,sizeof(openFileNode *),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	EMPI_Send(&recvDataHead,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&recvDataTail,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&recvDataRedHead,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&recvDataRedTail,sizeof(recvDataNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&skipcmplist,sizeof(struct skiplist *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&skipreplist,sizeof(struct skiplist *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&skipredlist,sizeof(struct skiplist *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&reqHead,sizeof(reqNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&reqTail,sizeof(reqNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&openFileHead,sizeof(openFileNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&openFileTail,sizeof(openFileNode *),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 	
-	EMPI_Send(&parep_mpi_store_buf_sz,sizeof(long),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&parep_mpi_sendid,sizeof(int),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
-	EMPI_Send(&parep_mpi_collective_id,sizeof(int),EMPI_BYTE,dest_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);
+	openFileNode *onode = openFileHead;
+	while(onode != NULL) {
+		address vtableptr = *((address *)((((address)(onode->file)) + (onode->file->_vtable_offset)) + sizeof(FILE)));
+		offset = 0;
+		mapname[0] = '\0';
+		bool found = false;
+		for(int j = 0; j < num_mappings; j++) {
+			if((mappings[j].start <= vtableptr) && (mappings[j].end > vtableptr)) {
+				if(mappings[j].pathname[0] == '\0') {
+					while(mappings[j].pathname[0] == '\0') j--;
+				}
+				strcpy(mapname,mappings[j].pathname);
+				while(!strcmp(mapname,mappings[j].pathname)) j--;
+				j++;
+				offset = vtableptr - mappings[j].start;
+				found = true;
+				break;
+			}
+		}
+		if(!found) {
+			mapname[0] = '\0';
+			offset = vtableptr;
+		}
+		EMPI_Send(mapname,MAX_PATH_LEN,EMPI_CHAR,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+		EMPI_Send(&offset,sizeof(address),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+		onode = onode->next;
+	}
+	
+	EMPI_Send(&parep_mpi_store_buf_sz,sizeof(long),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&parep_mpi_sendid,sizeof(int),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
+	EMPI_Send(&parep_mpi_collective_id,sizeof(int),EMPI_BYTE,dest_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM);tagbase++;
 }
 
 void parep_mpi_recv_replication_data(int src_rank) {
@@ -2701,6 +3217,7 @@ void parep_mpi_recv_replication_data(int src_rank) {
 	extern address _edata;
 	extern address __bss_start;
 	extern address _end;
+	tagbase = 0;
 	address offset;
 	address fsbasekey;
 	address curfsbase;
@@ -2708,24 +3225,27 @@ void parep_mpi_recv_replication_data(int src_rank) {
 	char mapname[256];
 	ptpdata *pdata;
 	clcdata *cdata;
+	heap_node_t *headnode;
+	footer_t *footnode;
 	
 	address temprip,temprsp,temprbp;
 	temprip = getPC(parep_mpi_replication_initializer);
 	
+	size_t hpsize,stksize;
 	int init_data_seg_size;
 	int uinit_data_seg_size;
 	
 	Context processContext;
-	EMPI_Recv(&fsbasekey,sizeof(address),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&processContext,sizeof(Context),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&parep_mpi_replication_initializer,sizeof(jmp_buf),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(&fsbasekey,sizeof(address),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&processContext,sizeof(Context),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&parep_mpi_replication_initializer,sizeof(jmp_buf),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
-	EMPI_Recv(&parep_mpi_num_reg_vals,1,EMPI_INT,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(&parep_mpi_num_reg_vals,1,EMPI_INT,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
 	for(int i = 0; i < parep_mpi_num_reg_vals; i++) {
 		for(int k = 0; k < 15; k++) {
-			EMPI_Recv(mapname,MAX_PATH_LEN,EMPI_CHAR,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-			EMPI_Recv(&offset,sizeof(address),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+			EMPI_Recv(mapname,MAX_PATH_LEN,EMPI_CHAR,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+			EMPI_Recv(&offset,sizeof(address),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 			if(mapname[0] == '\0') parep_mpi_reg_vals[i][k] = offset;
 			else {
 				for(int j = 0; j < num_mappings; j++) {
@@ -2823,13 +3343,16 @@ void parep_mpi_recv_replication_data(int src_rank) {
 	memcpy(&mpi_ft_op_dup[14],&mpi_ft_op_no_op,sizeof(struct mpi_ft_op));
 	
 	//RECV DATA
-	EMPI_Recv(&init_data_seg_size,1,EMPI_INT,src_rank,PAREP_MPI_REPLICATION_TAG,mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&uinit_data_seg_size,1,EMPI_INT,src_rank,PAREP_MPI_REPLICATION_TAG,mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(&init_data_seg_size,1,EMPI_INT,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&uinit_data_seg_size,1,EMPI_INT,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
-	EMPI_Recv(&__data_start,init_data_seg_size,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(reqarr,1024*sizeof(MPI_Request),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(reqinuse,1024*sizeof(bool),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	if(parep_mpi_fortran_binding_used) EMPI_Recv(&__bss_start,uinit_data_seg_size,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(&__data_start,init_data_seg_size,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(reqarr,1024*sizeof(MPI_Request),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(reqinuse,1024*sizeof(bool),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	if(parep_mpi_fortran_binding_used) {
+		EMPI_Recv(&__bss_start,uinit_data_seg_size,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),mpi_ft_comm_dup[1].EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+		tagbase++;
+	}
 	
 	stdout = (FILE *)stdout_dup;
 	memcpy(&_ZSt4cout,_ZSt4cout_buf,0x110);
@@ -2910,43 +3433,91 @@ void parep_mpi_recv_replication_data(int src_rank) {
 	memcpy(&mpi_ft_op_no_op,&mpi_ft_op_dup[14],sizeof(struct mpi_ft_op));
 	
 	//RECV HEAP
+	EMPI_Recv(&hpsize,sizeof(size_t),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	pthread_mutex_lock(&heap_free_list_mutex);
-	size_t oldsize = parep_mpi_ext_heap_size;
-	EMPI_Recv(&parep_mpi_ext_heap_size,sizeof(size_t),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	if(oldsize != parep_mpi_ext_heap_size) {
-		assert((parep_mpi_ext_heap_size > oldsize) && (parep_mpi_ext_heap_size % oldsize == 0));
-		expand_heap(parep_mpi_ext_heap_size - oldsize);
+	if(hpsize != parep_mpi_ext_heap_size) {
+		if(hpsize < parep_mpi_ext_heap_size) {
+			void *ctr_heap = mremap((void *)parep_mpi_ext_heap_mapping,parep_mpi_ext_heap_size,hpsize,0);
+			if(ctr_heap == MAP_FAILED) {
+				printf("%d: Heap shrink failed\n",getpid());
+				exit(0);
+			}
+			assert((address)ctr_heap == (address)parep_mpi_ext_heap_mapping);
+			assert(parep_mpi_heap.start == (address)parep_mpi_ext_heap_mapping);
+			parep_mpi_ext_heap_size = hpsize;
+			parep_mpi_heap.end = (address)parep_mpi_ext_heap_mapping + (address)parep_mpi_ext_heap_size;
+		}
+		//assert((hpsize >= parep_mpi_ext_heap_size) && (hpsize % parep_mpi_ext_heap_size == 0));
+		expand_heap(hpsize - parep_mpi_ext_heap_size);
 	}
-	EMPI_Recv(parep_mpi_bins,sizeof(bin_t)*BIN_COUNT,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(parep_mpi_fastbins,sizeof(bin_t)*FASTBIN_COUNT,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv((void *)parep_mpi_ext_heap_mapping,parep_mpi_ext_heap_size,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(parep_mpi_bins,sizeof(bin_t)*BIN_COUNT,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(parep_mpi_fastbins,sizeof(bin_t)*FASTBIN_COUNT,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	
+	headnode = (heap_node_t *)parep_mpi_ext_heap_mapping;
+	for(int k = 0; k < parep_mpi_ext_heap_size/0x20000000; k++) {
+		int size = 0x20000000;
+		if(((long)k*(long)0x20000000) + size > (parep_mpi_ext_heap_size)) size = parep_mpi_ext_heap_size - ((long)k*(long)0x20000000);
+		EMPI_Recv(parep_mpi_ext_heap_mapping + ((long)k*(long)0x20000000),size,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	}
+	/*while((address)headnode < (address)(parep_mpi_ext_heap_mapping+parep_mpi_ext_heap_size)) {
+		EMPI_Recv(headnode,sizeof(heap_node_t),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+		footnode = get_foot(headnode);
+		if((!GET_HOLE(headnode->hole_and_size)) && (!GET_FAST(headnode->hole_and_size)) && (GET_SIZE(headnode->hole_and_size) > 0)) {
+			if(((address)footnode) - ((address)headnode) - sizeof(heap_node_t) > 0) {
+				EMPI_Recv((void *)(((address)headnode) + sizeof(heap_node_t)),((address)footnode) - ((address)headnode) - sizeof(heap_node_t),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+				tagbase++;
+			}
+		} else {
+			if((GET_SIZE(headnode->hole_and_size) > 0)) assert((((address)headnode + GET_SIZE(headnode->hole_and_size) + sizeof(heap_node_t)) == (address)footnode));
+			else assert((GET_SIZE(headnode->hole_and_size) == 0) && (((address)headnode + sizeof(heap_node_t)) == (address)footnode));
+		}
+		EMPI_Recv(footnode,sizeof(footer_t),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+		headnode = (heap_node_t *)(((address)footnode) + sizeof(footer_t));
+	}*/
 	pthread_mutex_unlock(&heap_free_list_mutex);
 
 	//RECV STACK
-	EMPI_Recv((void *)parep_mpi_new_stack_start,parep_mpi_new_stack_size,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv((void *)parep_mpi_new_stack_start,parep_mpi_new_stack_size,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
-	EMPI_Recv(&src_req_null,sizeof(address),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&first_peertopeer,sizeof(ptpdata *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&last_peertopeer,sizeof(ptpdata *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&last_collective,sizeof(clcdata *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(&src_req_null,sizeof(address),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&first_peertopeer,sizeof(ptpdata *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&last_peertopeer,sizeof(ptpdata *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&last_collective,sizeof(clcdata *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
-	EMPI_Recv(parep_mpi_commbuf_bins,sizeof(commbuf_bin_t)*COMMBUF_BIN_COUNT,EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(parep_mpi_commbuf_bins,sizeof(commbuf_bin_t)*COMMBUF_BIN_COUNT,EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
-	EMPI_Recv(&recvDataHead,sizeof(recvDataNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&recvDataTail,sizeof(recvDataNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&recvDataRedHead,sizeof(recvDataNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&recvDataRedTail,sizeof(recvDataNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&skipcmplist,sizeof(struct skiplist *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&skipreplist,sizeof(struct skiplist *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&skipredlist,sizeof(struct skiplist *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&reqHead,sizeof(reqNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&reqTail,sizeof(reqNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&openFileHead,sizeof(reqNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&openFileTail,sizeof(reqNode *),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	EMPI_Recv(&recvDataHead,sizeof(recvDataNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&recvDataTail,sizeof(recvDataNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&recvDataRedHead,sizeof(recvDataNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&recvDataRedTail,sizeof(recvDataNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&skipcmplist,sizeof(struct skiplist *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&skipreplist,sizeof(struct skiplist *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&skipredlist,sizeof(struct skiplist *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&reqHead,sizeof(reqNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&reqTail,sizeof(reqNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&openFileHead,sizeof(reqNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&openFileTail,sizeof(reqNode *),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
-	EMPI_Recv(&parep_mpi_store_buf_sz,sizeof(long),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&parep_mpi_sendid,sizeof(int),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
-	EMPI_Recv(&parep_mpi_collective_id,sizeof(int),EMPI_BYTE,src_rank,PAREP_MPI_REPLICATION_TAG,MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);
+	openFileNode *onode = openFileHead;
+	while(onode != NULL) {
+		address *vtableptraddr = ((address *)((((address)(onode->file)) + (onode->file->_vtable_offset)) + sizeof(FILE)));
+		EMPI_Recv(mapname,MAX_PATH_LEN,EMPI_CHAR,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+		EMPI_Recv(&offset,sizeof(address),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+		if(mapname[0] == '\0') *vtableptraddr = offset;
+		else {
+			for(int j = 0; j < num_mappings; j++) {
+				if(!strcmp(mappings[j].pathname,mapname)) {
+					*vtableptraddr = offset + mappings[j].start;
+					break;
+				}
+			}
+		}
+		onode = onode->next;
+	}
+	
+	EMPI_Recv(&parep_mpi_store_buf_sz,sizeof(long),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&parep_mpi_sendid,sizeof(int),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
+	EMPI_Recv(&parep_mpi_collective_id,sizeof(int),EMPI_BYTE,src_rank,(int)((long)((long)(PAREP_MPI_REPLICATION_TAG) + ((long)tagbase)) % INT_MAX),MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_STATUS_IGNORE);tagbase++;
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -3072,7 +3643,8 @@ void initialize_mpi_variables() {
 	mpi_ft_op_init(EMPI_MAXLOC,&mpi_ft_op_maxloc);
 	mpi_ft_op_init(EMPI_REPLACE,&mpi_ft_op_replace);
 	mpi_ft_op_init(EMPI_NO_OP,&mpi_ft_op_no_op);
-
+	
+	sprintf(extLibstr,"%s/lib/libmpi.so",getenv("PAREP_MPI_EMPI_PATH"));
 	extLib = dlopen(extLibstr, RTLD_NOW);
 	EMPI_Init = (int(*)(int *,char ***))dlsym(extLib,"MPI_Init");
 	EMPI_Finalize = (int(*)())dlsym(extLib,"MPI_Finalize");
@@ -3141,7 +3713,7 @@ int empi_comm_creation(int *rank, int *size, int *argc, char ***argv, bool poll_
 	int i, retVal, worldRank, worldSize, color, cmpLeader, repLeader;
 	int destRank = -1, srcRank = -1;
 	retVal = EMPI_Init (argc, argv);
-  if(parep_mpi_rank == parep_mpi_leader_rank) printf("EMPI INIT DONE\n");
+	if(parep_mpi_rank == parep_mpi_leader_rank) printf("EMPI INIT DONE\n");
 	EMPI_Comm_rank(EMPI_COMM_WORLD,&parep_mpi_original_rank);
 	parep_mpi_pid = getpid();
 	
@@ -3204,9 +3776,9 @@ int empi_comm_creation(int *rank, int *size, int *argc, char ***argv, bool poll_
 		if(CMP_PER_REP > 0) nR = worldSize/(1+CMP_PER_REP);
 		else nR = 0;
 	}
-  //nR = worldSize - worldSize / REP_DEGREE;
-  nC = worldSize - nR;
-  
+	//nR = worldSize - worldSize / REP_DEGREE;
+	nC = worldSize - nR;
+	
 	cmpToRepMap = (int *) libc_malloc (nC * sizeof (int));
 	repToCmpMap = (int *) libc_malloc (nR * sizeof (int));
 
@@ -3251,13 +3823,15 @@ int empi_comm_creation(int *rank, int *size, int *argc, char ***argv, bool poll_
 	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 	EMPI_Comm_size(MPI_COMM_WORLD->eworldComm,&mysize);
 	
+	parep_mpi_size = mysize;
+	
 	*rank = myrank;
 	*size = mysize;
 
 	EMPI_Barrier(MPI_COMM_WORLD->eworldComm);
 	
 	internalranks = (int *)libc_malloc(nC*sizeof(int));
-  
+	
 	for(int i=0;i<nC;i++) {
 		internalranks[i] = i;
 	}
@@ -3330,7 +3904,6 @@ void initialize_common_heap_and_stack(int myrank) {
 		}
 	} while(andresp == 0);
 	
-	
 	parep_mpi_new_stack_start = (address)parep_mpi_new_stack;
 	parep_mpi_new_stack_end = parep_mpi_new_stack_start + parep_mpi_new_stack_size;
 	parep_mpi_new_stack = (void *)(parep_mpi_new_stack_start + parep_mpi_new_stack_size - 256 - 8);
@@ -3338,94 +3911,141 @@ void initialize_common_heap_and_stack(int myrank) {
 	EMPI_Barrier(MPI_COMM_WORLD->eworldComm);
 }
 
-/* MPI_Init */
-
-int MPI_Init (int *argc, char ***argv) {
-	parep_mpi_argc = *argc;
-	parep_mpi_argv = *argv;
-	if(parep_mpi_initialized) {
+void checkpoint_and_restart() {
+	bool int_call;
+	if(pthread_self() == thread_tid[0]) {
+		int_call = parep_mpi_internal_call;
 		parep_mpi_internal_call = true;
-		parep_mpi_ckpt_wait = 1;
-		
-		parep_mpi_validator_pipe_check = 1;
-		unw_set_caching_policy(unw_local_addr_space,UNW_CACHE_NONE);
-		parep_mpi_validator_pipe_check = 0;
-		
-		mpi_ft_start_time = EMPI_Wtime();
+	}
+	parep_mpi_manual_restart = 1;
+	parep_mpi_ckpt_wait = 1;
+	pthread_kill(pthread_self(),SIGUSR1);
+	while(parep_mpi_ckpt_wait) {;}
 
-		pthread_kill(pthread_self(),SIGUSR1);
-		while(parep_mpi_ckpt_wait) {;}
-		
-		int myrank;
-		EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
-		
-		if (nR > 0) {
-			if(myrank < nC) {
-				if(cmpToRepMap[myrank] != -1) {
-					parep_mpi_validator_pipe_check = 1;
-					unw_cursor_t cursor; unw_context_t uc;
-					unw_word_t ip,ax,bx,cx,dx,di,si,r8,r9,r10,r11,r12,r13,r14,r15;
-					unw_getcontext(&uc);
-					unw_init_local(&cursor, &uc);
-					parep_mpi_num_reg_vals = 0;
-					while (unw_step(&cursor) > 0) {
-						unw_get_reg(&cursor, UNW_REG_IP, &ip);
-						unw_get_reg(&cursor, UNW_X86_64_RAX, &ax);
-						unw_get_reg(&cursor, UNW_X86_64_RBX, &bx);
-						unw_get_reg(&cursor, UNW_X86_64_RCX, &cx);
-						unw_get_reg(&cursor, UNW_X86_64_RDX, &dx);
-						unw_get_reg(&cursor, UNW_X86_64_RDI, &di);
-						unw_get_reg(&cursor, UNW_X86_64_RSI, &si);
-						unw_get_reg(&cursor, UNW_X86_64_R8, &r8);
-						unw_get_reg(&cursor, UNW_X86_64_R9, &r9);
-						unw_get_reg(&cursor, UNW_X86_64_R10, &r10);
-						unw_get_reg(&cursor, UNW_X86_64_R11, &r11);
-						unw_get_reg(&cursor, UNW_X86_64_R12, &r12);
-						unw_get_reg(&cursor, UNW_X86_64_R13, &r13);
-						unw_get_reg(&cursor, UNW_X86_64_R14, &r14);
-						unw_get_reg(&cursor, UNW_X86_64_R15, &r15);
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][0] = (address)ip;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][1] = (address)ax;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][2] = (address)bx;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][3] = (address)cx;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][4] = (address)dx;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][5] = (address)di;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][6] = (address)si;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][7] = (address)r8;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][8] = (address)r9;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][9] = (address)r10;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][10] = (address)r11;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][11] = (address)r12;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][12] = (address)r13;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][13] = (address)r14;
-						parep_mpi_reg_vals[parep_mpi_num_reg_vals][14] = (address)r15;
-						parep_mpi_num_reg_vals++;
-					}
-					parep_mpi_validator_pipe_check = 0;
-					int setjmp_status = setjmp(parep_mpi_replication_initializer);
-					if(setjmp_status == 0) {
-						jmp_buf copy_context;
-						copy_jmp_buf(parep_mpi_replication_initializer, copy_context);
-						newStack = mmap(NULL,TEMP_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-						address cur_pc = getPC(copy_context);
-						// Stack starts from higher address.
-						setRSP(copy_context, ((address)(newStack)) + TEMP_STACK_SIZE - TEMP_STACK_BOTTOM_OFFSET);
-						// Start execution on new temp stack.
-						parep_mpi_longjmp(copy_context, 1);
-					} else if(setjmp_status == 1) {
-						int dest_rank = cmpToRepMap[myrank];
-						//Send Data Heap and Stack
-						parep_mpi_send_replication_data(dest_rank);
-						parep_mpi_longjmp(parep_mpi_replication_initializer,2);
-					} else if(setjmp_status == 2) {
-						*argv = parep_mpi_argv;
-						printf("Longjmped to CMP SIDE rank %d myrank %d\n",parep_mpi_rank,myrank);
-						munmap(newStack,TEMP_STACK_SIZE);
+	if(parep_mpi_manual_restart) {
+		parep_mpi_manual_restart = 0;
+		int newrank;
+		pthread_mutex_lock(&reqListLock);
+		pthread_rwlock_rdlock(&commLock);
+		EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&newrank);
+		EMPI_Barrier(MPI_COMM_WORLD->eworldComm);
+		pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
+		if(newrank == parep_mpi_leader_rank) {
+			parep_infiniband_cmd(PAREP_IB_KILL_COORDINATOR);
+		}
+		pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
+		dlclose(extLib);
+		while(1);
+		pthread_rwlock_unlock(&commLock);
+		pthread_mutex_unlock(&reqListLock);
+	}
+
+	if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
+}
+
+void transfer_to_replicas(int *argc, char ***argv) {
+	bool int_call;
+	if(pthread_self() == thread_tid[0]) {
+		int_call = parep_mpi_internal_call;
+		parep_mpi_internal_call = true;
+	}
+	
+	pthread_mutex_lock(&reqListLock);
+	pthread_rwlock_wrlock(&commLock);
+	
+	EMPI_Group current_alive_group;
+	EMPI_Comm parep_mpi_new_comm,parep_mpi_old_comm;
+	memcpy(&parep_mpi_old_comm,&(MPI_COMM_WORLD->eworldComm),sizeof(EMPI_Comm));
+	EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_alive_group);
+	int ret = EMPI_Comm_create_group(MPI_COMM_WORLD->eworldComm,current_alive_group,1234,&parep_mpi_new_comm);
+	memcpy(&(MPI_COMM_WORLD->eworldComm),&parep_mpi_new_comm,sizeof(EMPI_Comm));
+	EMPI_Comm_free(&parep_mpi_old_comm);
+	
+	int newrank;
+	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&newrank);
+	if (nR > 0) {
+		int color = (newrank < nC) ? 0 : 1;
+		int cmpLeader = 0;
+		int repLeader = nC;
+
+		if (color == 0) {
+			EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, color, 0, &(MPI_COMM_WORLD->EMPI_COMM_CMP));
+			EMPI_Intercomm_create(MPI_COMM_WORLD->EMPI_COMM_CMP, 0, MPI_COMM_WORLD->eworldComm, repLeader, 100, &(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM));
+			int colorinternal;
+			if(cmpToRepMap[newrank] != -1) colorinternal = EMPI_UNDEFINED;
+			else colorinternal = 1;
+			EMPI_Comm_split (MPI_COMM_WORLD->EMPI_COMM_CMP, colorinternal, 0, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
+			if(MPI_COMM_WORLD->EMPI_CMP_NO_REP != EMPI_COMM_NULL) EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_CMP_NO_REP, 0, MPI_COMM_WORLD->eworldComm, repLeader, 101, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM));
+			MPI_COMM_WORLD->EMPI_COMM_REP = EMPI_COMM_NULL;
+		} else if (color == 1) {
+			EMPI_Comm_split (MPI_COMM_WORLD->eworldComm, color, 0, &(MPI_COMM_WORLD->EMPI_COMM_REP));
+			EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_COMM_REP, 0, MPI_COMM_WORLD->eworldComm, cmpLeader, 100, &(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM));
+			if(nC > nR) {
+				int rleader = nR;
+				for(int j = 0; j < nC; j++) {
+						if(cmpToRepMap[j] == -1) {
+						rleader = j;
+						break;
 					}
 				}
-			} else {
+				EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_COMM_REP, 0, MPI_COMM_WORLD->eworldComm, rleader, 101, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM));
+			}
+			MPI_COMM_WORLD->EMPI_COMM_CMP = EMPI_COMM_NULL;
+		}
+	} else {
+		EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_COMM_CMP));
+		EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
+	}
+	
+	parseStatFile();
+	parseMapsFile();
+	
+	int myrank;
+	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
+	
+	if (nR > 0) {
+		if(myrank < nC) {
+			if(cmpToRepMap[myrank] != -1) {
+				parep_mpi_validator_pipe_check = 1;
 				unw_cursor_t cursor; unw_context_t uc;
-				unw_word_t ip;
+				unw_word_t ip,ax,bx,cx,dx,di,si,r8,r9,r10,r11,r12,r13,r14,r15;
+				unw_getcontext(&uc);
+				unw_init_local(&cursor, &uc);
+				parep_mpi_num_reg_vals = 0;
+				while (unw_step(&cursor) > 0) {
+					unw_get_reg(&cursor, UNW_REG_IP, &ip);
+					unw_get_reg(&cursor, UNW_X86_64_RAX, &ax);
+					unw_get_reg(&cursor, UNW_X86_64_RBX, &bx);
+					unw_get_reg(&cursor, UNW_X86_64_RCX, &cx);
+					unw_get_reg(&cursor, UNW_X86_64_RDX, &dx);
+					unw_get_reg(&cursor, UNW_X86_64_RDI, &di);
+					unw_get_reg(&cursor, UNW_X86_64_RSI, &si);
+					unw_get_reg(&cursor, UNW_X86_64_R8, &r8);
+					unw_get_reg(&cursor, UNW_X86_64_R9, &r9);
+					unw_get_reg(&cursor, UNW_X86_64_R10, &r10);
+					unw_get_reg(&cursor, UNW_X86_64_R11, &r11);
+					unw_get_reg(&cursor, UNW_X86_64_R12, &r12);
+					unw_get_reg(&cursor, UNW_X86_64_R13, &r13);
+					unw_get_reg(&cursor, UNW_X86_64_R14, &r14);
+					unw_get_reg(&cursor, UNW_X86_64_R15, &r15);
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][0] = (address)ip;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][1] = (address)ax;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][2] = (address)bx;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][3] = (address)cx;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][4] = (address)dx;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][5] = (address)di;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][6] = (address)si;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][7] = (address)r8;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][8] = (address)r9;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][9] = (address)r10;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][10] = (address)r11;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][11] = (address)r12;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][12] = (address)r13;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][13] = (address)r14;
+					parep_mpi_reg_vals[parep_mpi_num_reg_vals][14] = (address)r15;
+					parep_mpi_num_reg_vals++;
+				}
+				parep_mpi_validator_pipe_check = 0;
 				int setjmp_status = setjmp(parep_mpi_replication_initializer);
 				if(setjmp_status == 0) {
 					jmp_buf copy_context;
@@ -3437,51 +4057,367 @@ int MPI_Init (int *argc, char ***argv) {
 					// Start execution on new temp stack.
 					parep_mpi_longjmp(copy_context, 1);
 				} else if(setjmp_status == 1) {
-					int src_rank = repToCmpMap[myrank-nC];
-					//Recv Data Heap and Stack
-					parep_mpi_recv_replication_data(src_rank);
+					int dest_rank = cmpToRepMap[myrank];
+					//Send Data Heap and Stack
+					parep_mpi_send_replication_data(dest_rank);
 					parep_mpi_longjmp(parep_mpi_replication_initializer,2);
 				} else if(setjmp_status == 2) {
-					*argv = parep_mpi_argv;
-					printf("Longjmped to REP SIDE rank %d myrank %d\n",parep_mpi_rank,myrank);
+					if(argv != NULL) *argv = parep_mpi_argv;
+					printf("%d: Longjmped to CMP SIDE rank %d myrank %d\n",getpid(),parep_mpi_rank,myrank);
 					munmap(newStack,TEMP_STACK_SIZE);
 				}
-				parep_mpi_validator_pipe_check = 1;
-				unw_getcontext(&uc);
-				unw_init_local(&cursor, &uc);
-				int step = 0;
-				while (unw_step(&cursor) > 0) {
-					unw_set_reg(&cursor, UNW_REG_IP, parep_mpi_reg_vals[step][0]);
-					unw_set_reg(&cursor, UNW_X86_64_RAX, parep_mpi_reg_vals[step][1]);
-					unw_set_reg(&cursor, UNW_X86_64_RBX, parep_mpi_reg_vals[step][2]);
-					unw_set_reg(&cursor, UNW_X86_64_RCX, parep_mpi_reg_vals[step][3]);
-					unw_set_reg(&cursor, UNW_X86_64_RDX, parep_mpi_reg_vals[step][4]);
-					unw_set_reg(&cursor, UNW_X86_64_RDI, parep_mpi_reg_vals[step][5]);
-					unw_set_reg(&cursor, UNW_X86_64_RSI, parep_mpi_reg_vals[step][6]);
-					unw_set_reg(&cursor, UNW_X86_64_R8, parep_mpi_reg_vals[step][7]);
-					unw_set_reg(&cursor, UNW_X86_64_R9, parep_mpi_reg_vals[step][8]);
-					unw_set_reg(&cursor, UNW_X86_64_R10, parep_mpi_reg_vals[step][9]);
-					unw_set_reg(&cursor, UNW_X86_64_R11, parep_mpi_reg_vals[step][10]);
-					unw_set_reg(&cursor, UNW_X86_64_R12, parep_mpi_reg_vals[step][11]);
-					unw_set_reg(&cursor, UNW_X86_64_R13, parep_mpi_reg_vals[step][12]);
-					unw_set_reg(&cursor, UNW_X86_64_R14, parep_mpi_reg_vals[step][13]);
-					unw_set_reg(&cursor, UNW_X86_64_R15, parep_mpi_reg_vals[step][14]);
-					step++;
-				}
-				parep_mpi_validator_pipe_check = 0;
 			}
-			pthread_mutex_lock(&reqListLock);
-			pthread_rwlock_rdlock(&commLock);
-			pthread_mutex_lock(&peertopeerLock);
-			pthread_mutex_lock(&collectiveLock);
-			parep_mpi_restore_messages();
-			pthread_mutex_unlock(&collectiveLock);
-			pthread_mutex_unlock(&peertopeerLock);
-			pthread_rwlock_unlock(&commLock);
-			pthread_mutex_unlock(&reqListLock);
+		} else {
+			unw_cursor_t cursor; unw_context_t uc;
+			unw_word_t ip;
+			int setjmp_status = setjmp(parep_mpi_replication_initializer);
+			if(setjmp_status == 0) {
+				jmp_buf copy_context;
+				copy_jmp_buf(parep_mpi_replication_initializer, copy_context);
+				newStack = mmap(NULL,TEMP_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+				address cur_pc = getPC(copy_context);
+				// Stack starts from higher address.
+				setRSP(copy_context, ((address)(newStack)) + TEMP_STACK_SIZE - TEMP_STACK_BOTTOM_OFFSET);
+				// Start execution on new temp stack.
+				parep_mpi_longjmp(copy_context, 1);
+			} else if(setjmp_status == 1) {
+				int src_rank = repToCmpMap[myrank-nC];
+				//Recv Data Heap and Stack
+				parep_mpi_recv_replication_data(src_rank);
+				parep_mpi_longjmp(parep_mpi_replication_initializer,2);
+			} else if(setjmp_status == 2) {
+				if(argv != NULL) *argv = parep_mpi_argv;
+				printf("%d: Longjmped to REP SIDE rank %d myrank %d\n",getpid(),parep_mpi_rank,myrank);
+				munmap(newStack,TEMP_STACK_SIZE);
+			}
+			parep_mpi_validator_pipe_check = 1;
+			unw_getcontext(&uc);
+			unw_init_local(&cursor, &uc);
+			int step = 0;
+			while (unw_step(&cursor) > 0) {
+				unw_set_reg(&cursor, UNW_REG_IP, parep_mpi_reg_vals[step][0]);
+				unw_set_reg(&cursor, UNW_X86_64_RAX, parep_mpi_reg_vals[step][1]);
+				unw_set_reg(&cursor, UNW_X86_64_RBX, parep_mpi_reg_vals[step][2]);
+				unw_set_reg(&cursor, UNW_X86_64_RCX, parep_mpi_reg_vals[step][3]);
+				unw_set_reg(&cursor, UNW_X86_64_RDX, parep_mpi_reg_vals[step][4]);
+				unw_set_reg(&cursor, UNW_X86_64_RDI, parep_mpi_reg_vals[step][5]);
+				unw_set_reg(&cursor, UNW_X86_64_RSI, parep_mpi_reg_vals[step][6]);
+				unw_set_reg(&cursor, UNW_X86_64_R8, parep_mpi_reg_vals[step][7]);
+				unw_set_reg(&cursor, UNW_X86_64_R9, parep_mpi_reg_vals[step][8]);
+				unw_set_reg(&cursor, UNW_X86_64_R10, parep_mpi_reg_vals[step][9]);
+				unw_set_reg(&cursor, UNW_X86_64_R11, parep_mpi_reg_vals[step][10]);
+				unw_set_reg(&cursor, UNW_X86_64_R12, parep_mpi_reg_vals[step][11]);
+				unw_set_reg(&cursor, UNW_X86_64_R13, parep_mpi_reg_vals[step][12]);
+				unw_set_reg(&cursor, UNW_X86_64_R14, parep_mpi_reg_vals[step][13]);
+				unw_set_reg(&cursor, UNW_X86_64_R15, parep_mpi_reg_vals[step][14]);
+				step++;
+			}
+			parep_mpi_validator_pipe_check = 0;
 		}
 		
+		pthread_mutex_lock(&peertopeerLock);
+		pthread_mutex_lock(&collectiveLock);
+		
+		ptpdata *pdata = first_peertopeer;
+		while(pdata != NULL) {
+			if(pdata->type == MPI_FT_RECV) {
+				if(pdata->completecmp && pdata->completerep && (pdata->req == NULL)) {
+					pdata->markdelrep = pdata->markdelcmp;
+					if(pdata->markdelcmp && pdata->markdelrep) {
+						struct peertopeer_data *deldata = pdata;
+						pdata = pdata->prev;
+						
+						if(deldata == first_peertopeer) {
+							first_peertopeer = first_peertopeer->prev;
+						}
+						if(deldata == last_peertopeer) {
+							last_peertopeer = last_peertopeer->next;
+						}
+						
+						if(deldata->next != NULL) deldata->next->prev = deldata->prev;
+						if(deldata->prev != NULL) deldata->prev->next = deldata->next;
+						
+						parep_mpi_free(deldata);
+						
+						continue;
+					}
+				}
+			} else if(pdata->type == MPI_FT_SEND) {
+				if(pdata->completecmp && pdata->completerep && (pdata->req == NULL)) {
+					if(pdata->markdelcmp && pdata->markdelrep) {
+						struct peertopeer_data *deldata = pdata;
+						pdata = pdata->prev;
+						
+						if(deldata == first_peertopeer) {
+							first_peertopeer = first_peertopeer->prev;
+						}
+						if(deldata == last_peertopeer) {
+							last_peertopeer = last_peertopeer->next;
+						}
+						
+						if(deldata->next != NULL) deldata->next->prev = deldata->prev;
+						if(deldata->prev != NULL) deldata->prev->next = deldata->next;
+						
+						int size;
+						int count, extracount;
+						EMPI_Type_size(deldata->dt->edatatype,&size);
+						if(size >= sizeof(int)) extracount = 1;
+						else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+						else extracount = (((int)sizeof(int))/size) + 1;
+						count = deldata->count;
+						
+						long delsize = (count+extracount)*size;
+						
+						if(deldata->buf != NULL) {
+							parep_mpi_free(deldata->buf);
+							deldata->buf = NULL;
+							pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+							parep_mpi_store_buf_sz = parep_mpi_store_buf_sz - delsize;
+							pthread_cond_signal(&parep_mpi_store_buf_sz_cond);
+							pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+						}
+						
+						parep_mpi_free(deldata);
+						
+						continue;
+					}
+				}
+			}
+			pdata = pdata->prev;
+		}
+		
+		clcdata *cdata = last_collective;
+		while(cdata != NULL) {
+			//New code Take Care!!!
+			if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) {
+				if((cdata->type == MPI_FT_REDUCE) || (cdata->type == MPI_FT_ALLREDUCE)) {
+					cdata->completerep = cdata->completecmp;
+					cdata->completecmp = true;
+				}
+			} else if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+				if((cdata->type == MPI_FT_REDUCE) || (cdata->type == MPI_FT_ALLREDUCE)) {
+					if((!cdata->completecmp) && (cdata->completerep)) {
+						int myrank;
+						EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_CMP,&myrank);
+						if(cdata->type == MPI_FT_REDUCE) {
+							if((cmpToRepMap[myrank] != -1) && ((cdata->args).reduce.root == myrank)) cdata->completerep = false;
+						} else if(cdata->type == MPI_FT_ALLREDUCE) {
+							if(cmpToRepMap[myrank] != -1) cdata->completerep = false;
+						}
+					}
+				}
+			}
+			if(cdata->id == -1) {
+				struct collective_data *deldata = cdata;
+				cdata = cdata->next;
+				
+				if(deldata == last_collective) {
+					last_collective = last_collective->next;
+				}
+				
+				if(deldata->next != NULL) deldata->next->prev = deldata->prev;
+				if(deldata->prev != NULL) deldata->prev->next = deldata->next;
+				
+				if(deldata->type == MPI_FT_BCAST) {
+					if((deldata->args).bcast.buf != NULL) parep_mpi_free((deldata->args).bcast.buf);
+				} else if(deldata->type == MPI_FT_SCATTER) {
+					if((deldata->args).scatter.sendbuf != NULL) parep_mpi_free((deldata->args).scatter.sendbuf);
+				} else if(deldata->type == MPI_FT_GATHER) {
+					parep_mpi_free((deldata->args).gather.sendbuf);
+				} else if(deldata->type == MPI_FT_REDUCE) {
+					parep_mpi_free((deldata->args).reduce.sendbuf);
+					if((deldata->args).reduce.alloc_recvbuf) parep_mpi_free((deldata->args).reduce.recvbuf);
+				} else if(deldata->type == MPI_FT_ALLGATHER) {
+					parep_mpi_free((deldata->args).allgather.sendbuf);
+				} else if(deldata->type == MPI_FT_ALLTOALL) {
+					parep_mpi_free((deldata->args).alltoall.sendbuf);
+				} else if(deldata->type == MPI_FT_ALLTOALLV) {
+					parep_mpi_free((deldata->args).alltoallv.sendbuf);
+					parep_mpi_free((deldata->args).alltoallv.sendcounts);
+					parep_mpi_free((deldata->args).alltoallv.recvcounts);
+					parep_mpi_free((deldata->args).alltoallv.sdispls);
+					parep_mpi_free((deldata->args).alltoallv.rdispls);
+				} else if(deldata->type == MPI_FT_ALLREDUCE) {
+					int size;
+					EMPI_Type_size((deldata->args).allreduce.dt->edatatype,&size);
+					long delsize = 2 * (deldata->args).allreduce.count * size;
+					parep_mpi_free((deldata->args).allreduce.sendbuf);
+					if((deldata->args).allreduce.alloc_recvbuf) parep_mpi_free((deldata->args).allreduce.recvbuf);
+					pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+					parep_mpi_store_buf_sz = parep_mpi_store_buf_sz - delsize;
+					pthread_cond_signal(&parep_mpi_store_buf_sz_cond);
+					pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+				}
+				
+				parep_mpi_free(deldata);
+				
+				continue;
+			}
+			cdata = cdata->next;
+		}
+		
+		handle_rem_recv_no_poll();
+		
 		EMPI_Barrier(MPI_COMM_WORLD->eworldComm);
+		
+		pdata = first_peertopeer;
+		while(pdata != NULL) {
+			if(pdata->type == MPI_FT_RECV) {
+				if(pdata->completecmp && pdata->completerep && (pdata->req == NULL)) {
+					if(pdata->markdelcmp && pdata->markdelrep) {
+						struct peertopeer_data *deldata = pdata;
+						pdata = pdata->prev;
+						
+						if(deldata == first_peertopeer) {
+							first_peertopeer = first_peertopeer->prev;
+						}
+						if(deldata == last_peertopeer) {
+							last_peertopeer = last_peertopeer->next;
+						}
+						
+						if(deldata->next != NULL) deldata->next->prev = deldata->prev;
+						if(deldata->prev != NULL) deldata->prev->next = deldata->next;
+						
+						parep_mpi_free(deldata);
+						
+						continue;
+					}
+				}
+			} else if(pdata->type == MPI_FT_SEND) {
+				if(pdata->completecmp && pdata->completerep && (pdata->req == NULL)) {
+					if(pdata->markdelcmp && pdata->markdelrep) {
+						struct peertopeer_data *deldata = pdata;
+						pdata = pdata->prev;
+						
+						if(deldata == first_peertopeer) {
+							first_peertopeer = first_peertopeer->prev;
+						}
+						if(deldata == last_peertopeer) {
+							last_peertopeer = last_peertopeer->next;
+						}
+						
+						if(deldata->next != NULL) deldata->next->prev = deldata->prev;
+						if(deldata->prev != NULL) deldata->prev->next = deldata->next;
+						
+						int size;
+						int count, extracount;
+						EMPI_Type_size(deldata->dt->edatatype,&size);
+						if(size >= sizeof(int)) extracount = 1;
+						else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+						else extracount = (((int)sizeof(int))/size) + 1;
+						count = deldata->count;
+						
+						long delsize = (count+extracount)*size;
+						
+						if(deldata->buf != NULL) {
+							parep_mpi_free(deldata->buf);
+							deldata->buf = NULL;
+							pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+							parep_mpi_store_buf_sz = parep_mpi_store_buf_sz - delsize;
+							pthread_cond_signal(&parep_mpi_store_buf_sz_cond);
+							pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+						}
+						
+						parep_mpi_free(deldata);
+						
+						continue;
+					}
+				}
+			}
+			pdata = pdata->prev;
+		}
+		
+		cdata = last_collective;
+		while(cdata != NULL) {
+			if(cdata->id == -1) {
+				struct collective_data *deldata = cdata;
+				cdata = cdata->next;
+				
+				if(deldata == last_collective) {
+					last_collective = last_collective->next;
+				}
+				
+				if(deldata->next != NULL) deldata->next->prev = deldata->prev;
+				if(deldata->prev != NULL) deldata->prev->next = deldata->next;
+				
+				if(deldata->type == MPI_FT_BCAST) {
+					if((deldata->args).bcast.buf != NULL) parep_mpi_free((deldata->args).bcast.buf);
+				} else if(deldata->type == MPI_FT_SCATTER) {
+					if((deldata->args).scatter.sendbuf != NULL) parep_mpi_free((deldata->args).scatter.sendbuf);
+				} else if(deldata->type == MPI_FT_GATHER) {
+					parep_mpi_free((deldata->args).gather.sendbuf);
+				} else if(deldata->type == MPI_FT_REDUCE) {
+					parep_mpi_free((deldata->args).reduce.sendbuf);
+					if((deldata->args).reduce.alloc_recvbuf) parep_mpi_free((deldata->args).reduce.recvbuf);
+				} else if(deldata->type == MPI_FT_ALLGATHER) {
+					parep_mpi_free((deldata->args).allgather.sendbuf);
+				} else if(deldata->type == MPI_FT_ALLTOALL) {
+					parep_mpi_free((deldata->args).alltoall.sendbuf);
+				} else if(deldata->type == MPI_FT_ALLTOALLV) {
+					parep_mpi_free((deldata->args).alltoallv.sendbuf);
+					parep_mpi_free((deldata->args).alltoallv.sendcounts);
+					parep_mpi_free((deldata->args).alltoallv.recvcounts);
+					parep_mpi_free((deldata->args).alltoallv.sdispls);
+					parep_mpi_free((deldata->args).alltoallv.rdispls);
+				} else if(deldata->type == MPI_FT_ALLREDUCE) {
+					int size;
+					EMPI_Type_size((deldata->args).allreduce.dt->edatatype,&size);
+					long delsize = 2 * (deldata->args).allreduce.count * size;
+					parep_mpi_free((deldata->args).allreduce.sendbuf);
+					if((deldata->args).allreduce.alloc_recvbuf) parep_mpi_free((deldata->args).allreduce.recvbuf);
+					pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+					parep_mpi_store_buf_sz = parep_mpi_store_buf_sz - delsize;
+					pthread_cond_signal(&parep_mpi_store_buf_sz_cond);
+					pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+				}
+				
+				parep_mpi_free(deldata);
+				
+				continue;
+			}
+			cdata = cdata->next;
+		}
+		parep_mpi_restore_messages();
+		pthread_mutex_unlock(&collectiveLock);
+		pthread_mutex_unlock(&peertopeerLock);
+	}
+	EMPI_Barrier(MPI_COMM_WORLD->eworldComm);
+	pthread_rwlock_unlock(&commLock);
+	pthread_mutex_unlock(&reqListLock);
+	
+	if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
+}
+
+int MPI_Replica_rearrange(int *ctrmap, int *rtcmap) {
+	clock_gettime(CLOCK_REALTIME,&mpi_ft_replica_rearrange_start_time);
+	for (int i=0; i<nC; i++) {
+		cmpToRepMap[i] = ctrmap[i];
+		if (i < nR) repToCmpMap[i] = rtcmap[i];
+	}
+	transfer_to_replicas(NULL,NULL);
+	clock_gettime(CLOCK_REALTIME,&mpi_ft_replica_rearrange_end_time);
+	printf("%d: Replica Rearrange time = %f\n",getpid(),(timespec_to_double(mpi_ft_replica_rearrange_end_time)-timespec_to_double(mpi_ft_replica_rearrange_start_time)));
+	return MPI_SUCCESS;
+}
+
+/* MPI_Init */
+int MPI_Init (int *argc, char ***argv) {
+	parep_mpi_argc = *argc;
+	parep_mpi_argv = *argv;
+	if(parep_mpi_initialized) {
+		parep_mpi_internal_call = true;
+		//parep_mpi_ckpt_wait = 1;
+		
+		parep_mpi_validator_pipe_check = 1;
+		unw_set_caching_policy(unw_local_addr_space,UNW_CACHE_NONE);
+		parep_mpi_validator_pipe_check = 0;
+		
+		//mpi_ft_start_time = EMPI_Wtime();
+
+		/*pthread_kill(pthread_self(),SIGUSR1);
+		while(parep_mpi_ckpt_wait) {;}*/
+		transfer_to_replicas(argc,argv);
+		int myrank;
 		EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 		if(getenv("PAREP_MPI_MANUAL_CKPT_START") != NULL) {
 			if(strcmp(getenv("PAREP_MPI_MANUAL_CKPT_START"),"1") != 0) {
@@ -3490,6 +4426,9 @@ int MPI_Init (int *argc, char ***argv) {
 				pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
 			}
 		} else {
+			parep_mpi_ckpt_wait = 1;
+			pthread_kill(pthread_self(),SIGUSR1);
+			while(parep_mpi_ckpt_wait) {;}
 			pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 			if(myrank == parep_mpi_leader_rank) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
 			pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
@@ -3521,7 +4460,7 @@ int MPI_Init (int *argc, char ***argv) {
 	set_signal_handler(SIGUSR1);
 	parep_mpi_restore = 1;
 	parep_mpi_restore_wait = 1;
-
+	
 	num_failures = 0;
 	
 	char host_name[HOST_NAME_MAX+1];
@@ -3727,11 +4666,19 @@ int MPI_Init (int *argc, char ***argv) {
 	parep_mpi_leader_rank = 0;
 	
 	pthread_create(&daemon_poller,NULL,polling_daemon,NULL);
-	//pthread_create(&request_handler,NULL,handling_requests,NULL);
 	
 	while(parep_mpi_polling_started == 0);
 	
 	parep_mpi_pmi_fd = (getenv("PMI_FD") == NULL) ? -1 : atoi(getenv("PMI_FD"));
+	if(parep_mpi_pmi_fd != -1) {
+		if(parep_mpi_pmi_fd != PAREP_MPI_PMI_FD) {
+			dup2(parep_mpi_pmi_fd,PAREP_MPI_PMI_FD);
+			parep_mpi_pmi_fd = PAREP_MPI_PMI_FD;
+			char pmi_fd_str[64];
+			sprintf(pmi_fd_str,"%d",parep_mpi_pmi_fd);
+			setenv("PMI_FD",pmi_fd_str,1);
+		}
+	}
 	parep_mpi_kvs_name[0] = '\0';
 	
 	//parseSockInfo();
@@ -3743,13 +4690,18 @@ int MPI_Init (int *argc, char ***argv) {
 	if(_real_fopen == NULL) _real_fopen = dlsym(RTLD_NEXT,"fopen");
 	if(_real_fopen64 == NULL) _real_fopen64 = dlsym(RTLD_NEXT,"fopen64");
 	
-	initialize_mpi_variables();
-	int myrank,mysize;
-	int retVal = empi_comm_creation(&myrank,&mysize,argc,argv,true);
-	
 	pthread_kill(pthread_self(),SIGUSR1);
 	while(parep_mpi_restore_wait) {;}
 	
+	clock_gettime(CLOCK_REALTIME,&mpi_ft_start_time);
+	
+	parep_mpi_ckpt_wait = 1;
+	pthread_kill(pthread_self(),SIGUSR1);
+	while(parep_mpi_ckpt_wait) {;}
+	
+	initialize_mpi_variables();
+	int myrank,mysize;
+	int retVal = empi_comm_creation(&myrank,&mysize,argc,argv,true);
 	initialize_common_heap_and_stack(myrank);
 	
 	parep_mpi_initialized = true;
@@ -3774,18 +4726,33 @@ int MPI_Comm_rank (MPI_Comm comm, int *rank) {
 		int_call = parep_mpi_internal_call;
 		parep_mpi_internal_call = true;
 	}
+	parep_mpi_sighandling_state = 1;
 	int myRank;
 	pthread_rwlock_rdlock(&commLock);
 	if (comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
 		EMPI_Comm_rank (comm->EMPI_COMM_REP, &myRank);
 		*rank = repToCmpMap [myRank];
 		pthread_rwlock_unlock(&commLock);
+		if(parep_mpi_sighandling_state == 2) {
+			parep_mpi_sighandling_state = 0;
+			parep_mpi_ckpt_wait = 1;
+			pthread_kill(pthread_self(),SIGUSR1);
+			while(parep_mpi_ckpt_wait) {;}
+		}
+		parep_mpi_sighandling_state = 0;
 		if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
 		
 		return MPI_SUCCESS;
 	} else {
 		EMPI_Comm_rank (comm->EMPI_COMM_CMP, rank);
 		pthread_rwlock_unlock(&commLock);
+		if(parep_mpi_sighandling_state == 2) {
+			parep_mpi_sighandling_state = 0;
+			parep_mpi_ckpt_wait = 1;
+			pthread_kill(pthread_self(),SIGUSR1);
+			while(parep_mpi_ckpt_wait) {;}
+		}
+		parep_mpi_sighandling_state = 0;
 		if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
 		
 		return MPI_SUCCESS;
@@ -3801,17 +4768,33 @@ int MPI_Comm_size (MPI_Comm comm, int *size) {
 		int_call = parep_mpi_internal_call;
 		parep_mpi_internal_call = true;
 	}
+	
+	parep_mpi_sighandling_state = 1;
 	pthread_rwlock_rdlock(&commLock);
 	if (comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
 		EMPI_Comm_size (comm->eworldComm, size);
 		*size = *size - nR;
 		pthread_rwlock_unlock(&commLock);
+		if(parep_mpi_sighandling_state == 2) {
+			parep_mpi_sighandling_state = 0;
+			parep_mpi_ckpt_wait = 1;
+			pthread_kill(pthread_self(),SIGUSR1);
+			while(parep_mpi_ckpt_wait) {;}
+		}
+		parep_mpi_sighandling_state = 0;
 		if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
 		
 		return MPI_SUCCESS;
 	} else {
 		EMPI_Comm_size (comm->EMPI_COMM_CMP, size);
 		pthread_rwlock_unlock(&commLock);
+		if(parep_mpi_sighandling_state == 2) {
+			parep_mpi_sighandling_state = 0;
+			parep_mpi_ckpt_wait = 1;
+			pthread_kill(pthread_self(),SIGUSR1);
+			while(parep_mpi_ckpt_wait) {;}
+		}
+		parep_mpi_sighandling_state = 0;
 		if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
 		
 		return MPI_SUCCESS;
@@ -5011,7 +5994,22 @@ int MPI_Isend (void *buf, int count, MPI_Datatype datatype, int dest, int tag, M
 		pthread_mutex_unlock(&rem_recv_msg_sent_mutex);
 	}
 	while(parep_mpi_store_buf_sz + ((count+extracount)*size) >= 0x80000000) {
-		pthread_cond_wait(&parep_mpi_store_buf_sz_cond,&parep_mpi_store_buf_sz_mutex);
+		pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+		pthread_mutex_lock(&reqListLock);
+		pthread_rwlock_rdlock(&commLock);
+		for(int source = 0; source < nC; source++) {
+			if((comm->EMPI_COMM_REP) != EMPI_COMM_NULL) {
+				if(cmpToRepMap[source] == -1) probe_msg_from_source(comm, source);
+				else probe_msg_from_source(comm, cmpToRepMap[source]+nC);
+			} else if((comm->EMPI_COMM_CMP)!= EMPI_COMM_NULL) {
+				probe_msg_from_source(comm, source);
+			}
+		}
+		probe_reduce_messages_with_comm(comm);
+		pthread_rwlock_unlock(&commLock);
+		pthread_mutex_unlock(&reqListLock);
+		pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+		//pthread_cond_wait(&parep_mpi_store_buf_sz_cond,&parep_mpi_store_buf_sz_mutex);
 	}
 	parep_mpi_store_buf_sz = parep_mpi_store_buf_sz + ((count+extracount)*size);
 	curargs->buf = parep_mpi_malloc((count+extracount)*size);
@@ -5165,6 +6163,17 @@ int MPI_Irecv (void *buf, int count, MPI_Datatype datatype, int source, int tag,
 	ftreq->bufloc = buf;
 	
 	pthread_mutex_lock(&reqListLock);
+	/*pthread_rwlock_rdlock(&commLock);
+	retVal = 0;
+	do {
+		if((comm->EMPI_COMM_REP) != EMPI_COMM_NULL) {
+			if(cmpToRepMap[source] == -1) retVal = probe_msg_from_source(comm, source);
+			else retVal = probe_msg_from_source(comm, cmpToRepMap[source]+nC);
+		} else if((comm->EMPI_COMM_CMP)!= EMPI_COMM_NULL) {
+			retVal = probe_msg_from_source(comm, source);
+		}
+	} while(retVal != 0);
+	pthread_rwlock_unlock(&commLock);*/
 	
 	pthread_mutex_lock(&recvDataListLock);
 	recvDataNode *rnode = recvDataListFind(source,tag,comm);
@@ -5377,8 +6386,8 @@ int MPI_Wait (MPI_Request *req, MPI_Status *status) {
 	//struct timespec waittime;
 	//waittime.tv_sec = 1;
 	//waittime.tv_nsec = 0;
-	pthread_mutex_lock(&reqListLock);
 	parep_mpi_sighandling_state = 3;
+	pthread_mutex_lock(&reqListLock);
 	while(!(ftreq->complete)) {
 		if(parep_mpi_wait_block == 1) {
 			pthread_mutex_unlock(&reqListLock);
@@ -6934,7 +7943,48 @@ int MPI_Iallreduce (void *sendbuf, void *recvbuf, int count, MPI_Datatype dataty
 	else extracount = (((int)sizeof(int))/size) + 1;
 	dis = ((count+extracount)*size) - sizeof(int);
 	
+	pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+	if(parep_mpi_store_buf_sz + (2*count*size) >= 0x40000000) {
+		pthread_mutex_lock(&rem_recv_msg_sent_mutex);
+		if(rem_recv_msg_sent == 0) {
+			int dyn_sock;
+			int ret;
+			dyn_sock = socket(AF_INET, SOCK_STREAM, 0);
+			do {
+				ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
+			} while(ret != 0);
+			int cmd = CMD_REM_RECV;
+			write(dyn_sock,&cmd,sizeof(int));
+			close(dyn_sock);
+			rem_recv_msg_sent = 1;
+		}
+		pthread_mutex_unlock(&rem_recv_msg_sent_mutex);
+	}
+	while(parep_mpi_store_buf_sz + (2*count*size) >= 0x80000000) {
+		pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+		pthread_mutex_lock(&reqListLock);
+		pthread_rwlock_rdlock(&commLock);
+		for(int source = 0; source < nC; source++) {
+			if((comm->EMPI_COMM_REP) != EMPI_COMM_NULL) {
+				if(cmpToRepMap[source] == -1) probe_msg_from_source(comm, source);
+				else probe_msg_from_source(comm, cmpToRepMap[source]+nC);
+			} else if((comm->EMPI_COMM_CMP)!= EMPI_COMM_NULL) {
+				probe_msg_from_source(comm, source);
+			}
+		}
+		probe_reduce_messages_with_comm(comm);
+		pthread_rwlock_unlock(&commLock);
+		pthread_mutex_unlock(&reqListLock);
+		pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+		//pthread_cond_wait(&parep_mpi_store_buf_sz_cond,&parep_mpi_store_buf_sz_mutex);
+	}
+	pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+	
 	pthread_mutex_lock(&reqListLock);
+	
+	/*pthread_rwlock_rdlock(&commLock);
+	probe_reduce_messages_with_comm(comm);
+	pthread_rwlock_unlock(&commLock);*/
 	
 	pthread_mutex_lock(&recvDataListLock);
 	recvDataNode *rnode = recvDataRedListFind(parep_mpi_collective_id,MPI_FT_ALLREDUCE_TEMP);

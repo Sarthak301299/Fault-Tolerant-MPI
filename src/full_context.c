@@ -23,8 +23,8 @@ extern address _edata;				// Initialized Data Segment		: End
 extern address __bss_start;			// Uninitialized Data Segment	: Start
 extern address _end;				// Uninitialized Data Segment	: End
 
-extern double mpi_ft_ckpt_start_time;
-extern double mpi_ft_ckpt_end_time;
+extern struct timespec mpi_ft_ckpt_start_time;
+extern struct timespec mpi_ft_ckpt_end_time;
 
 extern char *tempStack;
 extern char *tempMap;
@@ -158,6 +158,8 @@ extern char parep_mpi_kvs_name[256];
 
 extern int parep_mpi_fortran_binding_used;
 
+static address copyMapSize;
+
 __attribute__((optimize(0), __noinline__))
 void *getCurrentPC() { return __builtin_return_address(0); }
 
@@ -243,6 +245,24 @@ static off_t parep_mpi_lseek(int fd, off_t offset, int whence) {
 									"r" ((long)fd),
 									"r" (offset),
 									"r" ((long)whence)
+								: "rax", "rdi", "rsi", "rdx", "rcx", "r11", "memory");
+	return ret;
+}
+
+NO_OPTIMIZE
+static int parep_mpi_msync(void *addr, size_t length, int flags) {
+	int ret;
+	asm volatile ("mov %1, %%rax\n\t"
+								"mov %2, %%rdi\n\t"
+								"mov %3, %%rsi\n\t"
+								"mov %4, %%rdx\n\t"
+								"syscall\n\t"
+								"mov %%eax, %0"
+								: "=r" (ret)
+								: "i" (SYS_msync),
+									"r" (addr),
+									"r" (length),
+									"r" ((long)flags)
 								: "rax", "rdi", "rsi", "rdx", "rcx", "r11", "memory");
 	return ret;
 }
@@ -1331,6 +1351,34 @@ void write_heap_and_stack(char *file_name) {
 		parep_mpi_perform_write(ckpt_fd,&openFileHead,sizeof(openFileNode *));
 		parep_mpi_perform_write(ckpt_fd,&openFileTail,sizeof(openFileNode *));
 		
+		openFileNode *onode = openFileHead;
+		while(onode != NULL) {
+			address vtableptr = *((address *)((((address)(onode->file)) + (onode->file->_vtable_offset)) + sizeof(FILE)));
+			offset = 0;
+			mapname[0] = '\0';
+			bool found = false;
+			for(int j = 0; j < num_mappings; j++) {
+				if((mappings[j].start <= vtableptr) && (mappings[j].end > vtableptr)) {
+					if(mappings[j].pathname[0] == '\0') {
+						while(mappings[j].pathname[0] == '\0') j--;
+					}
+					parep_mpi_strcpy(mapname,mappings[j].pathname);
+					while(!parep_mpi_strcmp(mapname,mappings[j].pathname)) j--;
+					j++;
+					offset = vtableptr - mappings[j].start;
+					found = true;
+					break;
+				}
+			}
+			if(!found) {
+				mapname[0] = '\0';
+				offset = vtableptr;
+			}
+			parep_mpi_perform_write(ckpt_fd,mapname,MAX_PATH_LEN);
+			parep_mpi_perform_write(ckpt_fd,&offset,sizeof(address));
+			onode = onode->next;
+		}
+		
 		parep_mpi_perform_write(ckpt_fd,&parep_mpi_store_buf_sz,sizeof(long));
 		
 		parep_mpi_perform_write(ckpt_fd,&parep_mpi_sendid,sizeof(int));
@@ -1666,20 +1714,20 @@ static int read_one_memory_area(int fd, address endOfStack) {
 		if((!((map.start >= pstat.restore_start) && (map.end <= pstat.restore_end))) && (!(map.start == pstat.restore_end))) {
 			if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)prstat.restore_start,prstat.restore_end-prstat.restore_start)) {
 				parep_mpi_perform_write(1,"PRSTAT OVERLAP\n",15);
-				if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+				//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 				map_to_temp = true;
 			}
 			if(!map_to_temp) {
 				if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)mappings[prstat.related_map].start,mappings[prstat.related_map].end-mappings[prstat.related_map].start)) {
 					parep_mpi_perform_write(1,"RELMAP OVERLAP\n",15);
-					if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+					//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 					map_to_temp = true;
 				}
 			}
 			if(!map_to_temp) {
 				if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)newStack,TEMP_STACK_SIZE)) {
 					parep_mpi_perform_write(1,"NSTACK OVERLAP\n",15);
-					if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+					//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 					map_to_temp = true;
 				}
 			}
@@ -1688,7 +1736,7 @@ static int read_one_memory_area(int fd, address endOfStack) {
 					if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)mappings[i].start,mappings[i].end-mappings[i].start)) {
 						if(mappings[i].flags & MAP_SHARED || isIBShmArea(&(mappings[i]))) {
 							parep_mpi_perform_write(1,"SHM MAP OVERLAP\n",16);
-							if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+							//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 							map_to_temp = true;
 							break;
 						}
@@ -1698,20 +1746,20 @@ static int read_one_memory_area(int fd, address endOfStack) {
 		} else {
 			if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)prstat.restore_start,prstat.restore_end-prstat.restore_start)) {
 				parep_mpi_perform_write(1,"PRSTAT RES OVERLAP\n",19);
-				if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+				//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 				map_to_temp = true;
 			}
 			if(!map_to_temp) {
 				if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)mappings[prstat.related_map].start,mappings[prstat.related_map].end-mappings[prstat.related_map].start)) {
 					parep_mpi_perform_write(1,"RELMAP RES OVERLAP\n",19);
-					if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+					//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 					map_to_temp = true;
 				}
 			}
 			if(!map_to_temp) {
 				if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)newStack,TEMP_STACK_SIZE)) {
 					parep_mpi_perform_write(1,"NSTACK RES OVERLAP\n",19);
-					if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+					//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 					map_to_temp = true;
 				}
 			}
@@ -1720,7 +1768,7 @@ static int read_one_memory_area(int fd, address endOfStack) {
 					if(doAreasOverlap((char *)map.start,map.end-map.start,(char *)mappings[i].start,mappings[i].end-mappings[i].start)) {
 						if(mappings[i].flags & MAP_SHARED || isIBShmArea(&(mappings[i]))) {
 							parep_mpi_perform_write(1,"SHM MAP RES OVERLAP\n",20);
-							if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
+							//if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 							map_to_temp = true;
 							break;
 						}
@@ -1767,7 +1815,7 @@ static int read_one_memory_area(int fd, address endOfStack) {
 		}
 		
 		if(map_to_temp) {
-			parep_mpi_perform_write(1,"MARKING FOR REMAP\n",18);
+			//parep_mpi_perform_write(1,"MARKING FOR REMAP\n",18);
 			if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
 			remap_addr[remap_num][0] = tempremapaddr;
 			remap_addr[remap_num][1] = (map.end-map.start);
@@ -2019,7 +2067,7 @@ void read_heap_and_stack(char *file_name) {
 	
 	parep_mpi_perform_read(ckpt_fd,&hpsize,sizeof(size_t));
 	if(hpsize != parep_mpi_ext_heap_size) {
-		assert((hpsize > parep_mpi_ext_heap_size) && (hpsize % parep_mpi_ext_heap_size == 0));
+		//assert((hpsize >= parep_mpi_ext_heap_size) && (hpsize % parep_mpi_ext_heap_size == 0));
 		expand_heap(hpsize - parep_mpi_ext_heap_size);
 	}
 	
@@ -2065,6 +2113,23 @@ void read_heap_and_stack(char *file_name) {
 	parep_mpi_perform_read(ckpt_fd,&reqTail,sizeof(reqNode *));
 	parep_mpi_perform_read(ckpt_fd,&openFileHead,sizeof(openFileNode *));
 	parep_mpi_perform_read(ckpt_fd,&openFileTail,sizeof(openFileNode *));
+	
+	openFileNode *onode = openFileHead;
+	while(onode != NULL) {
+		address *vtableptraddr = ((address *)((((address)(onode->file)) + (onode->file->_vtable_offset)) + sizeof(FILE)));
+		parep_mpi_perform_read(ckpt_fd,mapname,MAX_PATH_LEN);
+		parep_mpi_perform_read(ckpt_fd,&offset,sizeof(address));
+		if(mapname[0] == '\0') *vtableptraddr = offset;
+		else {
+			for(int j = 0; j < num_mappings; j++) {
+				if(!parep_mpi_strcmp(mappings[j].pathname,mapname)) {
+					*vtableptraddr = offset + mappings[j].start;
+					break;
+				}
+			}
+		}
+		onode = onode->next;
+	}
 	
 	parep_mpi_perform_read(ckpt_fd,&parep_mpi_store_buf_sz,sizeof(long));
 	
@@ -2138,22 +2203,6 @@ static void remap_and_cleanup() {
 			}
 		}
 		
-		parep_mpi_arch_prctl(ARCH_SET_FS,(unsigned long)(rem_fsbase));
-		
-		address temprip,temprsp,temprbp;
-		temprip = processContext.rip;
-		temprsp = processContext.rsp;
-		temprbp = processContext.rbp;
-		
-		PTR_ENCRYPT(temprip);
-		context[0].__jmpbuf[JB_PC] = temprip;
-		PTR_ENCRYPT(temprsp);
-		context[0].__jmpbuf[JB_RSP] = temprsp;
-		PTR_ENCRYPT(temprbp);
-		context[0].__jmpbuf[JB_RBP] = temprbp;
-		
-		IMB;
-		
 		newStack = (char *)(unmap_addr[0][0]);
 		long unmapret;
 		for(int i = 1; i < unmap_num; i++) {
@@ -2198,20 +2247,36 @@ static void remap_and_cleanup() {
 			}
 		}
 		
+		parep_mpi_arch_prctl(ARCH_SET_FS,(unsigned long)(rem_fsbase));
+		
+		address temprip,temprsp,temprbp;
+		temprip = processContext.rip;
+		temprsp = processContext.rsp;
+		temprbp = processContext.rbp;
+		
+		PTR_ENCRYPT(temprip);
+		context[0].__jmpbuf[JB_PC] = temprip;
+		PTR_ENCRYPT(temprsp);
+		context[0].__jmpbuf[JB_RSP] = temprsp;
+		PTR_ENCRYPT(temprbp);
+		context[0].__jmpbuf[JB_RBP] = temprbp;
+		
+		IMB;
+		
 		*((char **)(((address)(&tempMap)) - (address)tempMap + pstat.restore_start)) = tempMap;
 		
 		*((int *)(((address)(&___ckpt_counter)) - (address)tempMap + pstat.restore_start)) = ___ckpt_counter;
 		
 		*((int *)(((address)(&parep_mpi_pmi_fd)) - (address)tempMap + pstat.restore_start)) = parep_mpi_pmi_fd;
 		
-		*((double *)(((address)(&mpi_ft_ckpt_start_time)) - (address)tempMap + pstat.restore_start)) = mpi_ft_ckpt_start_time;
+		parep_mpi_memcpy((void *)(((address)(&mpi_ft_ckpt_start_time)) - (address)tempMap + pstat.restore_start),&mpi_ft_ckpt_start_time,sizeof(struct timespec));
 		
 		parep_mpi_memcpy((void *)(((address)(parep_mpi_kvs_name)) -  (address)tempMap + pstat.restore_start),parep_mpi_kvs_name,256);
 		
-		*((int *)(((address)(&num_socks)) - (address)tempMap + pstat.restore_start)) = num_socks;
+		/**((int *)(((address)(&num_socks)) - (address)tempMap + pstat.restore_start)) = num_socks;
 		for(int i = 0; i < num_socks; i++) {
 			*((SockInfo *)(((address)(&sockinfo[i])) - (address)tempMap + pstat.restore_start)) = sockinfo[i];
-		}
+		}*/
 		
 		for(int i = 0; i < num_threads; i++) {
 			*((pid_t *)(((address)(&kernel_tid[i])) - (address)tempMap + pstat.restore_start)) = kernel_tid[i];
@@ -2414,7 +2479,7 @@ void init_ckpt_restore(char *file_name) {
 	address cpc;
 	address curaddr;
 	remap_num = 0;
-	tempremapaddr = (address)(0x500000000000);
+	tempremapaddr = (address)(0x600000000000);
 	//asm volatile("\t rdfsbase %0" : "=r"(fsbase));
 	parep_mpi_arch_prctl(ARCH_GET_FS,(unsigned long)(&fsbase));
 	//syscall(SYS_arch_prctl,ARCH_GET_FS,&fsbase);
@@ -2455,7 +2520,9 @@ void init_ckpt_restore(char *file_name) {
 	
 	parep_mpi_close(ckpt_fd);
 	
-	tempMap = parep_mpi_mmap((void *)0x600000000000, (prstat.restore_full_end - prstat.restore_start) + TEMP_STACK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+	copyMapSize = (prstat.restore_full_end - prstat.restore_start) + TEMP_STACK_SIZE;
+	
+	tempMap = parep_mpi_mmap((void *)0x500000000000, (prstat.restore_full_end - prstat.restore_start) + TEMP_STACK_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0);
 	if((unsigned long)(tempMap) >= -4095UL) {
 		parep_mpi_perform_write(1,"MMAP TEMP FAILED\n",17);
 		unsigned long err = (unsigned long)(tempMap);
@@ -2493,6 +2560,7 @@ void init_ckpt_restore(char *file_name) {
 		copyaddr = (char *)((address)copyaddr + (mappings[i].end-mappings[i].start));
 	}
 	//*((address *)(((address)(&parep_mpi_jumped)) - prstat.restore_start + (address)tempMap)) = (address)parep_mpi_jumped - prstat.restore_start + (address)tempMap;
+	*((int *)(((address)(&(writing_ckpt_futex))) - prstat.restore_start + (address)tempMap)) = 0;
 	*((int *)(((address)(&(parep_mpi_jumped[0]))) - prstat.restore_start + (address)tempMap)) = 1;
 	
 	if(__sync_bool_compare_and_swap(&writing_ckpt_futex,1,0)) {
