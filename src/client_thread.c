@@ -4,6 +4,10 @@
 #include "request_handler.h"
 #include <math.h>
 
+extern double timespec_to_double(struct timespec);
+extern struct timespec mpi_ft_start_time;
+extern struct timespec mpi_ft_end_time;
+
 extern int parep_mpi_coordinator_socket;
 
 extern struct sockaddr_in parep_mpi_dyn_coordinator_addr;
@@ -74,14 +78,15 @@ volatile sig_atomic_t parep_mpi_restart_replicas = 0;
 
 int *ctrmap;
 int *rtcmap;
+pthread_mutex_t procmaplock = PTHREAD_MUTEX_INITIALIZER;
 int parep_mpi_trigger_swap_scheduled = 0;
+int parep_mpi_prerecv_trigger_swap = 0;
 extern pthread_t thread_tid[10];
 
 extern int parep_mpi_manual_restart;
 extern volatile sig_atomic_t parep_mpi_ckpt_wait;
 
-int *parep_mpi_pred_list = NULL;
-bool *parep_mpi_pred_failed = NULL;
+time_t *parep_mpi_pred_list = NULL;
 double parep_mpi_pred_mean = 0;
 double parep_mpi_M2 = 0.0;
 double parep_mpi_pred_std = 0;
@@ -262,7 +267,7 @@ int failed_proc_check() {
 					if(msgsize >= (sizeof(int) * num_failed_procs)) break;
 				}
 				
-				if(parep_mpi_pred_list != NULL) {
+				/*if(parep_mpi_pred_list != NULL) {
 					for(int i = 0; i < num_failed_procs; i++) {
 						int pred_index = -1;
 						int pred_offset = 0;
@@ -280,7 +285,7 @@ int failed_proc_check() {
 							parep_mpi_pred_failed[pred_index] = true;
 						}
 					}
-				}
+				}*/
 				
 				int myrank;
 				EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
@@ -744,71 +749,128 @@ int failed_proc_check() {
 			} else if(cmd == CMD_INFORM_PREDICT) {
 				printf("%d: Got CMD_INFORM_PREDICT from rem_recv scheduling\n",getpid());
 				bool swap_replicas = false;
+				pthread_mutex_lock(&procmaplock);
 				ctrmap = (int *)_real_malloc(sizeof(int) * nC);
 				rtcmap = (int *)_real_malloc(sizeof(int) * nR);
+				int recvrank,currank;
+				time_t curtimestamp;
 				msgsize = 0;
-				int probmapsize;
-				while((bytes_read = read(pfd.fd,(&probmapsize)+msgsize, sizeof(int)-msgsize)) > 0) {
+				while((bytes_read = read(pfd.fd,(&recvrank)+msgsize, sizeof(int)-msgsize)) > 0) {
 					msgsize += bytes_read;
 					if(msgsize >= (sizeof(int))) break;
 				}
-				assert(probmapsize == (nC+nR));
-				int *probmaps = (int *)_real_malloc(sizeof(int) * (probmapsize));
-				int *curprobmaps = (int *)_real_malloc(sizeof(int) * (probmapsize));
 				msgsize = 0;
-				while((bytes_read = read(pfd.fd,((void *)probmaps)+msgsize, (sizeof(int) * probmapsize)-msgsize)) > 0) {
+				while((bytes_read = read(pfd.fd,(&curtimestamp)+msgsize, sizeof(time_t)-msgsize)) > 0) {
 					msgsize += bytes_read;
-					if(msgsize >= (sizeof(int) * probmapsize)) break;
+					if(msgsize >= (sizeof(time_t))) break;
 				}
 				
-				if(parep_mpi_pred_list == NULL) parep_mpi_pred_list = (int *)_real_malloc(sizeof(int) * (probmapsize));
-				if(parep_mpi_pred_failed == NULL) parep_mpi_pred_failed = (bool *)_real_malloc(sizeof(bool) * (probmapsize));
-				
-				int *tempmaps = (int *)_real_malloc(sizeof(int) * (probmapsize));
-				for(int i = 0; i < probmapsize; i++) {
-					parep_mpi_pred_list[i] = probmaps[i];
-					parep_mpi_pred_failed[i] = false;
-					tempmaps[i] = i;
-					if(i < nC) ctrmap[i] = -1;
+				if(parep_mpi_pred_list == NULL) {
+					parep_mpi_pred_list = (time_t *)_real_malloc(sizeof(time_t) * (parep_mpi_size));
+					for(int i = 0; i < parep_mpi_size; i++) {
+						parep_mpi_pred_list[i] = (time_t)-1;
+						if(i < nC) ctrmap[i] = cmpToRepMap[i];
+						if(i < nR) rtcmap[i] = repToCmpMap[i];
+					}
+				} else {
+					for(int i = 0; i < parep_mpi_size; i++) {
+						if(parep_mpi_pred_list[i] != (time_t)-1) {
+							if(difftime(curtimestamp,parep_mpi_pred_list[i]) > 1800) {
+								parep_mpi_pred_list[i] = (time_t)-1;
+							}
+						}
+						if(i < nC) ctrmap[i] = cmpToRepMap[i];
+						if(i < nR) rtcmap[i] = repToCmpMap[i];
+					}
 				}
+				parep_mpi_pred_list[currank] = curtimestamp;
 				
-				EMPI_Group sorted_orig_group;
-				EMPI_Group sorted_current_group;
 				EMPI_Group current_group;
 				EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
-				EMPI_Group_incl(parep_mpi_original_group, probmapsize, probmaps, &sorted_orig_group);
-				EMPI_Group_translate_ranks(sorted_orig_group,probmapsize,tempmaps,current_group,curprobmaps);
+				EMPI_Group_translate_ranks(parep_mpi_original_group,1,&recvrank,current_group,&currank);
 				
-				//For each replica: Find comp proc with highest prob of failure and map it to replica with lowest prob of failure
-				int curcmpproc = 0;
-				int currepproc = probmapsize-1;
-				int cmpproc = -1;
-				int repproc = -1;
-				for(int k = 0; k < nR; k++) {
-					for (int j = curcmpproc; j < probmapsize; j++) {
-						if(curprobmaps[j] < nC) {
-							cmpproc = curprobmaps[j];
-							curcmpproc = j+1;
-							break;
+				if(currank < nC) {
+					bool has_replica = (cmpToRepMap[currank] != -1);
+					int reprank = -1;
+					int origreprank = -1;
+					bool replica_is_healthy = false;
+					if(has_replica) {
+						reprank = cmpToRepMap[currank] + nC;
+						EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+						replica_is_healthy = (parep_mpi_pred_list[origreprank] == (time_t)-1);
+					}
+					if(!has_replica || (has_replica && (!replica_is_healthy))) {
+						int newreprank = -1;
+						int oldcmprank = -1;
+						for(int k = 0; k < nR; k++) {
+							int reprank = k+nC;
+							int cmprank = repToCmpMap[k];
+							int origreprank;
+							int origcmprank;
+							EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+							EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+							if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (cmprank != currank)) {
+								newreprank = k;
+								oldcmprank = repToCmpMap[k];
+								break;
+							}
+						}
+						//assert(newreprank >= 0);
+						//assert(oldcmprank >= 0);
+						if((newreprank >= 0) && (oldcmprank >= 0)) {
+							if(!has_replica) {
+								ctrmap[currank] = newreprank;
+								rtcmap[newreprank] = currank;
+								ctrmap[oldcmprank] = -1;
+								swap_replicas = true;
+							} else if(!replica_is_healthy) {
+								ctrmap[currank] = newreprank;
+								rtcmap[newreprank] = currank;
+								ctrmap[oldcmprank] = cmpToRepMap[currank];
+								rtcmap[cmpToRepMap[currank]] = oldcmprank;
+								swap_replicas = true;
+							}
+						} else {
+							printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 						}
 					}
-					for(int j = currepproc; j >= 0; j--) {
-						if(curprobmaps[j] >= nC) {
-							repproc = curprobmaps[j];
-							currepproc = j-1;
-							break;
+				} else {
+					int reprank = currank;
+					int cmprank = repToCmpMap[reprank-nC];
+					int origcmprank;
+					int origreprank;
+					EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+					EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+					bool cmp_is_healthy = (parep_mpi_pred_list[origcmprank] == (time_t)-1);
+					if(!cmp_is_healthy) {
+						int newreprank = -1;
+						int oldcmprank = -1;
+						for(int k = 0; k < nR; k++) {
+							int reprank = k+nC;
+							int cmprank = repToCmpMap[k];
+							int origreprank;
+							int origcmprank;
+							EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+							EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+							if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (reprank != currank)) {
+								newreprank = k;
+								oldcmprank = repToCmpMap[k];
+								break;
+							}
+						}
+						if((newreprank >= 0) && (oldcmprank >= 0)) {
+							ctrmap[cmprank] = newreprank;
+							rtcmap[newreprank] = cmprank;
+							ctrmap[oldcmprank] = cmpToRepMap[cmprank];
+							rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
+							swap_replicas = true;
+						} else {
+							printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 						}
 					}
-					assert(cmpproc >= 0);
-					assert(repproc >= 0);
-					ctrmap[cmpproc] = repproc - nC;
-					rtcmap[repproc - nC] = cmpproc;
-					if(ctrmap[cmpproc] != cmpToRepMap[cmpproc]) swap_replicas = true;
 				}
-				
-				_real_free(tempmaps);
-				_real_free(probmaps);
-				_real_free(curprobmaps);
+				pthread_mutex_unlock(&procmaplock);
+
 				if(swap_replicas) {
 					parep_mpi_swap_replicas = 1;
 					parep_mpi_trigger_swap_scheduled = 1;
@@ -1637,7 +1699,16 @@ void *polling_daemon(void *arg) {
 	parep_mpi_polling_started = 1;
 	while(true) {
 		pollret = poll(&pfd,nfds,-1);
-		if((pollret == -1) && (errno == EINTR)) continue;
+		if((pollret == -1) && (errno == EINTR)) {
+			if(parep_mpi_prerecv_trigger_swap) {
+				pthread_mutex_lock(&reqListLock);
+				parep_mpi_prerecv_trigger_swap = 0;
+				parep_mpi_swap_replicas = 1;
+				pthread_mutex_unlock(&reqListLock);
+				pthread_kill(thread_tid[0],SIGUSR1);
+			}
+			continue;
+		}
 		if (pfd.revents != 0) {
 			if(pfd.revents & POLLIN) {
 				int cmd;
@@ -1650,71 +1721,128 @@ void *polling_daemon(void *arg) {
 				
 				if(cmd == CMD_INFORM_PREDICT) {
 					bool swap_replicas = false;
+					pthread_mutex_lock(&procmaplock);
 					ctrmap = (int *)_real_malloc(sizeof(int) * nC);
 					rtcmap = (int *)_real_malloc(sizeof(int) * nR);
+					int recvrank,currank;
+					time_t curtimestamp;
 					msgsize = 0;
-					int probmapsize;
-					while((bytes_read = read(pfd.fd,(&probmapsize)+msgsize, sizeof(int)-msgsize)) > 0) {
+					while((bytes_read = read(pfd.fd,(&recvrank)+msgsize, sizeof(int)-msgsize)) > 0) {
 						msgsize += bytes_read;
 						if(msgsize >= (sizeof(int))) break;
 					}
-					assert(probmapsize == (nC+nR));
-					int *probmaps = (int *)_real_malloc(sizeof(int) * (probmapsize));
-					int *curprobmaps = (int *)_real_malloc(sizeof(int) * (probmapsize));
 					msgsize = 0;
-					while((bytes_read = read(pfd.fd,((void *)(probmaps))+msgsize, (sizeof(int) * probmapsize)-msgsize)) > 0) {
+					while((bytes_read = read(pfd.fd,(&curtimestamp)+msgsize, sizeof(time_t)-msgsize)) > 0) {
 						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int) * probmapsize)) break;
+						if(msgsize >= (sizeof(time_t))) break;
 					}
 					
-					if(parep_mpi_pred_list == NULL) parep_mpi_pred_list = (int *)_real_malloc(sizeof(int) * (probmapsize));
-					if(parep_mpi_pred_failed == NULL) parep_mpi_pred_failed = (bool *)_real_malloc(sizeof(bool) * (probmapsize));
-					
-					int *tempmaps = (int *)_real_malloc(sizeof(int) * (probmapsize));
-					for(int i = 0; i < probmapsize; i++) {
-						parep_mpi_pred_list[i] = probmaps[i];
-						parep_mpi_pred_failed[i] = false;
-						tempmaps[i] = i;
-						if(i < nC) ctrmap[i] = -1;
+					if(parep_mpi_pred_list == NULL) {
+						parep_mpi_pred_list = (time_t *)_real_malloc(sizeof(time_t) * (parep_mpi_size));
+						for(int i = 0; i < parep_mpi_size; i++) {
+							parep_mpi_pred_list[i] = (time_t)-1;
+							if(i < nC) ctrmap[i] = cmpToRepMap[i];
+							if(i < nR) rtcmap[i] = repToCmpMap[i];
+						}
+					} else {
+						for(int i = 0; i < parep_mpi_size; i++) {
+							if(parep_mpi_pred_list[i] != (time_t)-1) {
+								if(difftime(curtimestamp,parep_mpi_pred_list[i]) > 1800) {
+									parep_mpi_pred_list[i] = (time_t)-1;
+								}
+							}
+							if(i < nC) ctrmap[i] = cmpToRepMap[i];
+							if(i < nR) rtcmap[i] = repToCmpMap[i];
+						}
 					}
+					parep_mpi_pred_list[currank] = curtimestamp;
 					
-					EMPI_Group sorted_orig_group;
-					EMPI_Group sorted_current_group;
 					EMPI_Group current_group;
 					EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
-					EMPI_Group_incl(parep_mpi_original_group, probmapsize, probmaps, &sorted_orig_group);
-					EMPI_Group_translate_ranks(sorted_orig_group,probmapsize,tempmaps,current_group,curprobmaps);
+					EMPI_Group_translate_ranks(parep_mpi_original_group,1,&recvrank,current_group,&currank);
 					
-					//For each replica: Find comp proc with highest prob of failure and map it to replica with lowest prob of failure
-					int curcmpproc = 0;
-					int currepproc = probmapsize-1;
-					int cmpproc = -1;
-					int repproc = -1;
-					for(int k = 0; k < nR; k++) {
-						for (int j = curcmpproc; j < probmapsize; j++) {
-							if(curprobmaps[j] < nC) {
-								cmpproc = curprobmaps[j];
-								curcmpproc = j+1;
-								break;
+					if(currank < nC) {
+						bool has_replica = (cmpToRepMap[currank] != -1);
+						int reprank = -1;
+						int origreprank = -1;
+						bool replica_is_healthy = false;
+						if(has_replica) {
+							reprank = cmpToRepMap[currank] + nC;
+							EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+							replica_is_healthy = (parep_mpi_pred_list[origreprank] == (time_t)-1);
+						}
+						if(!has_replica || (has_replica && (!replica_is_healthy))) {
+							int newreprank = -1;
+							int oldcmprank = -1;
+							for(int k = 0; k < nR; k++) {
+								int reprank = k+nC;
+								int cmprank = repToCmpMap[k];
+								int origreprank;
+								int origcmprank;
+								EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+								EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+								if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (cmprank != currank)) {
+									newreprank = k;
+									oldcmprank = repToCmpMap[k];
+									break;
+								}
+							}
+							//assert(newreprank >= 0);
+							//assert(oldcmprank >= 0);
+							if((newreprank >= 0) && (oldcmprank >= 0)) {
+								if(!has_replica) {
+									ctrmap[currank] = newreprank;
+									rtcmap[newreprank] = currank;
+									ctrmap[oldcmprank] = -1;
+									swap_replicas = true;
+								} else if(!replica_is_healthy) {
+									ctrmap[currank] = newreprank;
+									rtcmap[newreprank] = currank;
+									ctrmap[oldcmprank] = cmpToRepMap[currank];
+									rtcmap[cmpToRepMap[currank]] = oldcmprank;
+									swap_replicas = true;
+								}
+							} else {
+								printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 							}
 						}
-						for(int j = currepproc; j >= 0; j--) {
-							if(curprobmaps[j] >= nC) {
-								repproc = curprobmaps[j];
-								currepproc = j-1;
-								break;
+					} else {
+						int reprank = currank;
+						int cmprank = repToCmpMap[reprank-nC];
+						int origcmprank;
+						int origreprank;
+						EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+						EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+						bool cmp_is_healthy = (parep_mpi_pred_list[origcmprank] == (time_t)-1);
+						if(!cmp_is_healthy) {
+							int newreprank = -1;
+							int oldcmprank = -1;
+							for(int k = 0; k < nR; k++) {
+								int reprank = k+nC;
+								int cmprank = repToCmpMap[k];
+								int origreprank;
+								int origcmprank;
+								EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+								EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+								if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (reprank != currank)) {
+									newreprank = k;
+									oldcmprank = repToCmpMap[k];
+									break;
+								}
+							}
+							if((newreprank >= 0) && (oldcmprank >= 0)) {
+								ctrmap[cmprank] = newreprank;
+								rtcmap[newreprank] = cmprank;
+								ctrmap[oldcmprank] = cmpToRepMap[cmprank];
+								rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
+								swap_replicas = true;
+							} else {
+								printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 							}
 						}
-						assert(cmpproc >= 0);
-						assert(repproc >= 0);
-						ctrmap[cmpproc] = repproc - nC;
-						rtcmap[repproc - nC] = cmpproc;
-						if(ctrmap[cmpproc] != cmpToRepMap[cmpproc]) swap_replicas = true;
 					}
+					pthread_mutex_unlock(&procmaplock);
 					
-					_real_free(tempmaps);
-					_real_free(probmaps);
-					_real_free(curprobmaps);
 					if(swap_replicas) {
 						parep_mpi_swap_replicas = 1;
 						pthread_kill(thread_tid[0],SIGUSR1);
@@ -1922,7 +2050,7 @@ void *polling_daemon(void *arg) {
 						parep_mpi_trigger_swap_scheduled = 0;
 						pthread_kill(thread_tid[0],SIGUSR1);
 					}
-					if((double)nR < (parep_mpi_pred_mean + (3*parep_mpi_pred_std))) {
+					/*if((double)nR < (parep_mpi_pred_mean + (3*parep_mpi_pred_std))) {
 						int newrank;
 						EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&newrank);
 						if(newrank == parep_mpi_leader_rank) {
@@ -1959,7 +2087,7 @@ void *polling_daemon(void *arg) {
 							pthread_rwlock_unlock(&commLock);
 							pthread_mutex_unlock(&reqListLock);
 						}
-					}
+					}*/
 				} else if(cmd == CMD_INFORM_PROC_FAILED) {
 					parep_mpi_failed_proc_recv = 1;
 					int num_failed_procs;
@@ -1976,7 +2104,7 @@ void *polling_daemon(void *arg) {
 						if(msgsize >= (sizeof(int) * num_failed_procs)) break;
 					}
 					
-					if(parep_mpi_pred_list != NULL) {
+					/*if(parep_mpi_pred_list != NULL) {
 						for(int i = 0; i < num_failed_procs; i++) {
 							int pred_index = -1;
 							int pred_offset = 0;
@@ -1994,7 +2122,7 @@ void *polling_daemon(void *arg) {
 								parep_mpi_pred_failed[pred_index] = true;
 							}
 						}
-					}
+					}*/
 					
 					int myrank;
 					EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
@@ -2523,7 +2651,7 @@ void *polling_daemon(void *arg) {
 						pthread_mutex_unlock(&peertopeerLock);
 						pthread_rwlock_unlock(&commLock);
 						pthread_mutex_unlock(&reqListLock);
-						if((double)nR < (parep_mpi_pred_mean + (3*parep_mpi_pred_std))) {
+						/*if((double)nR < (parep_mpi_pred_mean + (3*parep_mpi_pred_std))) {
 							if(newrank == parep_mpi_leader_rank) {
 								int dyn_sock;
 								int ret;
@@ -2558,7 +2686,7 @@ void *polling_daemon(void *arg) {
 								pthread_rwlock_unlock(&commLock);
 								pthread_mutex_unlock(&reqListLock);
 							}
-						}
+						}*/
 					} else {
 						waiting_for_resp = 0;
 					}

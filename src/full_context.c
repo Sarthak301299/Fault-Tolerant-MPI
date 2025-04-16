@@ -70,6 +70,8 @@ extern reqNode *reqTail;
 extern openFileNode *openFileHead;
 extern openFileNode *openFileTail;
 
+extern char ***parep_mpi_argvp;
+
 extern int related_map;
 address llimit[2];
 address hlimit[2];
@@ -1350,6 +1352,7 @@ void write_heap_and_stack(char *file_name) {
 		parep_mpi_perform_write(ckpt_fd,&reqTail,sizeof(reqNode *));
 		parep_mpi_perform_write(ckpt_fd,&openFileHead,sizeof(openFileNode *));
 		parep_mpi_perform_write(ckpt_fd,&openFileTail,sizeof(openFileNode *));
+		parep_mpi_perform_write(ckpt_fd,&parep_mpi_argvp,sizeof(char ***));
 		
 		openFileNode *onode = openFileHead;
 		while(onode != NULL) {
@@ -2113,6 +2116,7 @@ void read_heap_and_stack(char *file_name) {
 	parep_mpi_perform_read(ckpt_fd,&reqTail,sizeof(reqNode *));
 	parep_mpi_perform_read(ckpt_fd,&openFileHead,sizeof(openFileNode *));
 	parep_mpi_perform_read(ckpt_fd,&openFileTail,sizeof(openFileNode *));
+	parep_mpi_perform_read(ckpt_fd,&parep_mpi_argvp,sizeof(char ***));
 	
 	openFileNode *onode = openFileHead;
 	while(onode != NULL) {

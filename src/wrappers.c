@@ -101,6 +101,7 @@ extern volatile sig_atomic_t parep_mpi_restart_replicas;
 
 extern int *ctrmap;
 extern int *rtcmap;
+extern pthread_mutex_t procmaplock;
 
 bool use_common_heap = false;
 
@@ -681,11 +682,11 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 			} while(flag == 0);
 		} while(ret == 1);*/
 		
-		pthread_rwlock_wrlock(&wrapperLock);
+		if(!parep_mpi_swap_replicas) pthread_rwlock_wrlock(&wrapperLock);
 		
 		pthread_mutex_lock(&reqListLock);
 		
-		pthread_rwlock_unlock(&wrapperLock);
+		if(!parep_mpi_swap_replicas) pthread_rwlock_unlock(&wrapperLock);
 		//1. Test all current requests if complete
 		if(___ckpt_counter >= 0) test_all_requests();
 		
@@ -1060,9 +1061,11 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 			parep_mpi_swap_replicas = 0;
 			pthread_rwlock_unlock(&commLock);
 			pthread_mutex_unlock(&reqListLock);
+			pthread_mutex_lock(&procmaplock);
 			MPI_Replica_rearrange(ctrmap,rtcmap);
 			_real_free(ctrmap);
 			_real_free(rtcmap);
+			pthread_mutex_unlock(&procmaplock);
 			pthread_mutex_lock(&reqListLock);
 			pthread_rwlock_rdlock(&commLock);
 			pthread_mutex_unlock(&num_thread_mutex);

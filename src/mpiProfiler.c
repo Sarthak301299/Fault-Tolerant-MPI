@@ -203,6 +203,15 @@ volatile sig_atomic_t parep_mpi_restore = 0;
 volatile sig_atomic_t parep_mpi_restore_wait = 0;
 volatile sig_atomic_t parep_mpi_ckpt_wait = 0;
 
+extern volatile sig_atomic_t parep_mpi_swap_replicas;
+extern volatile sig_atomic_t parep_mpi_restart_replicas;
+extern int *ctrmap;
+extern int *rtcmap;
+extern pthread_mutex_t procmaplock;
+extern int parep_mpi_trigger_swap_scheduled;
+extern int parep_mpi_prerecv_trigger_swap;
+extern time_t *parep_mpi_pred_list;
+
 extern volatile int end_wake_thread;
 
 int parep_mpi_coordinator_socket;
@@ -362,6 +371,8 @@ int parep_mpi_manual_restart = 0;
 
 int parep_mpi_argc;
 char **parep_mpi_argv;
+int *parep_mpi_argcp;
+char ***parep_mpi_argvp;
 extern int main(int,char **);
 
 void mpi_ft_datatype_init(EMPI_Datatype edatatype, int size, struct mpi_ft_datatype *out) {
@@ -919,34 +930,38 @@ int parep_mpi_checkpoint_init(int ckpt_num) {
 		pthread_mutex_unlock(&ib_restored_mutex);
 		
 		bool checkpoint_written = false;
+		bool write_bar_passed = false;
+		bool swap_set = parep_mpi_trigger_swap_scheduled;
 PAREP_MPI_WRITE_CKPT_START:
 		if(___ckpt_counter > 0) {
-			int dyn_sock = socket(AF_INET, SOCK_STREAM, 0);
-			if(dyn_sock == -1) {
-				perror("Failed to create socket");
-				exit(1);
-			}
-			int ret;
-			ssize_t bytes_written;
-			int msgsize = 0;
-			do {
-				ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
-			} while(ret != 0);
+			if(!write_bar_passed) {
+				int dyn_sock = socket(AF_INET, SOCK_STREAM, 0);
+				if(dyn_sock == -1) {
+					perror("Failed to create socket");
+					exit(1);
+				}
+				int ret;
+				ssize_t bytes_written;
+				int msgsize = 0;
+				do {
+					ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
+				} while(ret != 0);
 
-			int cmd = CMD_BARRIER;
-			
-			while((bytes_written = write(dyn_sock,(&cmd)+msgsize, sizeof(int)-msgsize)) > 0) {
-				msgsize += bytes_written;
-				if(msgsize >= (sizeof(int))) break;
+				int cmd = CMD_BARRIER;
+				
+				while((bytes_written = write(dyn_sock,(&cmd)+msgsize, sizeof(int)-msgsize)) > 0) {
+					msgsize += bytes_written;
+					if(msgsize >= (sizeof(int))) break;
+				}
+				if(bytes_written < 0) printf("%d: Write to server returned %d errno %d dyn_sock %d\n",getpid(),bytes_written,errno,dyn_sock);
+				msgsize = 0;
+				while((bytes_written = write(dyn_sock,(&parep_mpi_rank)+msgsize, sizeof(int)-msgsize)) > 0) {
+					msgsize += bytes_written;
+					if(msgsize >= (sizeof(int))) break;
+				}
+				if(bytes_written < 0) printf("%d: Write to server rank returned %d errno %d dyn_sock %d\n",getpid(),bytes_written,errno,dyn_sock);
+				close(dyn_sock);
 			}
-			if(bytes_written < 0) printf("%d: Write to server returned %d errno %d dyn_sock %d\n",getpid(),bytes_written,errno,dyn_sock);
-			msgsize = 0;
-			while((bytes_written = write(dyn_sock,(&parep_mpi_rank)+msgsize, sizeof(int)-msgsize)) > 0) {
-				msgsize += bytes_written;
-				if(msgsize >= (sizeof(int))) break;
-			}
-			if(bytes_written < 0) printf("%d: Write to server rank returned %d errno %d dyn_sock %d\n",getpid(),bytes_written,errno,dyn_sock);
-			close(dyn_sock);
 			
 			if(!checkpoint_written) {
 				parep_mpi_validator_pipe_check = 1;
@@ -1015,39 +1030,42 @@ PAREP_MPI_WRITE_CKPT_START:
 				}
 			}
 			
-			struct pollfd pfd;
-			pfd.fd = parep_mpi_coordinator_socket;
-			pfd.events = POLLIN;
-			nfds_t nfds = 1;
-			int pollret = -1;
-			do {
-				pollret = poll(&pfd,nfds,-1);
-			} while((pollret == -1) && (errno == EINTR));
-			assert(pollret > 0);
-			if (pfd.revents != 0) {
-				if(pfd.revents & POLLIN) {
-					int out;
-					int msgsize = 0;
-					size_t bytes_read;
-					while((bytes_read = read(pfd.fd,(&out)+msgsize, sizeof(int)-msgsize)) > 0) {
-						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int))) break;
-					}
-					assert(out == CMD_BARRIER);
-					int fail_ready = 0;
-					msgsize = 0;
-					while((bytes_read = read(pfd.fd,(&fail_ready)+msgsize, sizeof(int)-msgsize)) > 0) {
-						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int))) break;
-					}
-					if(fail_ready) {
-						do {
-							pollret = poll(&pfd,nfds,-1);
-						} while((pollret == -1) && (errno == EINTR));
+			if(!write_bar_passed) {
+				struct pollfd pfd;
+				pfd.fd = parep_mpi_coordinator_socket;
+				pfd.events = POLLIN;
+				nfds_t nfds = 1;
+				int pollret = -1;
+				do {
+					pollret = poll(&pfd,nfds,-1);
+				} while((pollret == -1) && (errno == EINTR));
+				assert(pollret > 0);
+				if (pfd.revents != 0) {
+					if(pfd.revents & POLLIN) {
+						int out;
+						int msgsize = 0;
+						size_t bytes_read;
+						while((bytes_read = read(pfd.fd,(&out)+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						assert(out == CMD_BARRIER);
+						int fail_ready = 0;
+						msgsize = 0;
+						while((bytes_read = read(pfd.fd,(&fail_ready)+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						if(fail_ready) {
+							do {
+								pollret = poll(&pfd,nfds,-1);
+							} while((pollret == -1) && (errno == EINTR));
+						}
 					}
 				}
 			}
 		}
+		write_bar_passed = true;
 		
 		struct pollfd pfd;
 		pfd.fd = parep_mpi_coordinator_socket;
@@ -1056,7 +1074,7 @@ PAREP_MPI_WRITE_CKPT_START:
 		int pollret = -1;
 		int loop = 0;
 		bool redoshrink = false;
-		int num_failed_procs;
+		int num_failed_procs = 0;
 		int *abs_failed_ranks;
 		int *failed_ranks;
 		
@@ -1071,7 +1089,7 @@ PAREP_MPI_WRITE_CKPT_START:
 						msgsize += bytes_read;
 						if(msgsize >= (sizeof(int))) break;
 					}
-					assert(cmd == CMD_INFORM_PROC_FAILED);
+					assert((cmd == CMD_INFORM_PROC_FAILED) || (cmd == CMD_INFORM_PREDICT));
 					if(cmd == CMD_INFORM_PROC_FAILED) {
 						int newnfp;
 						if(redoshrink) {
@@ -1093,7 +1111,7 @@ PAREP_MPI_WRITE_CKPT_START:
 							abs_failed_ranks = tempranks;
 							
 							msgsize = 0;
-							while((bytes_read = read(pfd.fd,&(abs_failed_ranks[num_failed_procs-newnfp])+msgsize, (sizeof(int) * newnfp)-msgsize)) > 0) {
+							while((bytes_read = read(pfd.fd,((char *)(&(abs_failed_ranks[num_failed_procs-newnfp])))+msgsize, (sizeof(int) * newnfp)-msgsize)) > 0) {
 								msgsize += bytes_read;
 								if(msgsize >= (sizeof(int) * newnfp)) break;
 							}
@@ -1113,6 +1131,14 @@ PAREP_MPI_WRITE_CKPT_START:
 								msgsize += bytes_read;
 								if(msgsize >= (sizeof(int) * num_failed_procs)) break;
 							}
+						}
+						if(parep_mpi_trigger_swap_scheduled && !swap_set) {
+							printf("%d: Fail before scheduled predict. Cancelling rearrange\n",getpid());
+							parep_mpi_trigger_swap_scheduled = 0;
+							assert(parep_mpi_swap_replicas != 0);
+							parep_mpi_swap_replicas = 0;
+							_real_free(ctrmap);
+							_real_free(rtcmap);
 						}
 						int myrank;
 						EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
@@ -1345,6 +1371,138 @@ PAREP_MPI_WRITE_CKPT_START:
 						pthread_mutex_unlock(&peertopeerLock);
 						
 						goto PAREP_MPI_WRITE_CKPT_START;
+					} else if(cmd == CMD_INFORM_PREDICT) {
+						printf("%d: Got CMD_INFORM_PREDICT during ckpt write scheduling\n",getpid());
+						bool swap_replicas = false;
+						pthread_mutex_lock(&procmaplock);
+						ctrmap = (int *)_real_malloc(sizeof(int) * nC);
+						rtcmap = (int *)_real_malloc(sizeof(int) * nR);
+						int recvrank,currank;
+						time_t curtimestamp;
+						msgsize = 0;
+						while((bytes_read = read(pfd.fd,(&recvrank)+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						msgsize = 0;
+						while((bytes_read = read(pfd.fd,(&curtimestamp)+msgsize, sizeof(time_t)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(time_t))) break;
+						}
+						
+						if(parep_mpi_pred_list == NULL) {
+							parep_mpi_pred_list = (time_t *)_real_malloc(sizeof(time_t) * (parep_mpi_size));
+							for(int i = 0; i < parep_mpi_size; i++) {
+								parep_mpi_pred_list[i] = (time_t)-1;
+								if(i < nC) ctrmap[i] = cmpToRepMap[i];
+								if(i < nR) rtcmap[i] = repToCmpMap[i];
+							}
+						} else {
+							for(int i = 0; i < parep_mpi_size; i++) {
+								if(parep_mpi_pred_list[i] != (time_t)-1) {
+									if(difftime(curtimestamp,parep_mpi_pred_list[i]) > 1800) {
+										parep_mpi_pred_list[i] = (time_t)-1;
+									}
+								}
+								if(i < nC) ctrmap[i] = cmpToRepMap[i];
+								if(i < nR) rtcmap[i] = repToCmpMap[i];
+							}
+						}
+						parep_mpi_pred_list[currank] = curtimestamp;
+						
+						EMPI_Group current_group;
+						EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
+						EMPI_Group_translate_ranks(parep_mpi_original_group,1,&recvrank,current_group,&currank);
+						
+						if(currank < nC) {
+							bool has_replica = (cmpToRepMap[currank] != -1);
+							int reprank = -1;
+							int origreprank = -1;
+							bool replica_is_healthy = false;
+							if(has_replica) {
+								reprank = cmpToRepMap[currank] + nC;
+								EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+								replica_is_healthy = (parep_mpi_pred_list[origreprank] == (time_t)-1);
+							}
+							if(!has_replica || (has_replica && (!replica_is_healthy))) {
+								int newreprank = -1;
+								int oldcmprank = -1;
+								for(int k = 0; k < nR; k++) {
+									int reprank = k+nC;
+									int cmprank = repToCmpMap[k];
+									int origreprank;
+									int origcmprank;
+									EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+									EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+									if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (cmprank != currank)) {
+										newreprank = k;
+										oldcmprank = repToCmpMap[k];
+										break;
+									}
+								}
+								//assert(newreprank >= 0);
+								//assert(oldcmprank >= 0);
+								if((newreprank >= 0) && (oldcmprank >= 0)) {
+									if(!has_replica) {
+										ctrmap[currank] = newreprank;
+										rtcmap[newreprank] = currank;
+										ctrmap[oldcmprank] = -1;
+										swap_replicas = true;
+									} else if(!replica_is_healthy) {
+										ctrmap[currank] = newreprank;
+										rtcmap[newreprank] = currank;
+										ctrmap[oldcmprank] = cmpToRepMap[currank];
+										rtcmap[cmpToRepMap[currank]] = oldcmprank;
+										swap_replicas = true;
+									}
+								} else {
+									printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+								}
+							}
+						} else {
+							int reprank = currank;
+							int cmprank = repToCmpMap[reprank-nC];
+							int origcmprank;
+							int origreprank;
+							EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+							EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+							bool cmp_is_healthy = (parep_mpi_pred_list[origcmprank] == (time_t)-1);
+							if(!cmp_is_healthy) {
+								int newreprank = -1;
+								int oldcmprank = -1;
+								for(int k = 0; k < nR; k++) {
+									int reprank = k+nC;
+									int cmprank = repToCmpMap[k];
+									int origreprank;
+									int origcmprank;
+									EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+									EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+									if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (reprank != currank)) {
+										newreprank = k;
+										oldcmprank = repToCmpMap[k];
+										break;
+									}
+								}
+								if((newreprank >= 0) && (oldcmprank >= 0)) {
+									ctrmap[cmprank] = newreprank;
+									rtcmap[newreprank] = cmprank;
+									ctrmap[oldcmprank] = cmpToRepMap[cmprank];
+									rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
+									swap_replicas = true;
+								} else {
+									printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+								}
+							}
+						}
+						pthread_mutex_unlock(&procmaplock);
+
+						if(swap_replicas && !swap_set) {
+							parep_mpi_swap_replicas = 1;
+							parep_mpi_trigger_swap_scheduled = 1;
+						} else {
+							_real_free(ctrmap);
+							_real_free(rtcmap);
+						}
 					}
 				}
 			}
@@ -1373,6 +1531,22 @@ PAREP_MPI_WRITE_CKPT_START:
 		clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_end_time);
 		printf("%d: Rank %d Checkpoint time %f\n",getpid(),rank,timespec_to_double(mpi_ft_ckpt_end_time)-timespec_to_double(mpi_ft_ckpt_start_time));
 		pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
+		
+		if(parep_mpi_trigger_swap_scheduled && !swap_set) {
+			parep_mpi_trigger_swap_scheduled = 0;
+			assert(parep_mpi_swap_replicas != 0);
+			parep_mpi_swap_replicas = 0;
+			parep_mpi_prerecv_trigger_swap = 1;
+			/*pthread_rwlock_unlock(&wrapperLock);
+			pthread_rwlock_unlock(&commLock);
+			pthread_mutex_unlock(&reqListLock);
+			MPI_Replica_rearrange(ctrmap,rtcmap);
+			_real_free(ctrmap);
+			_real_free(rtcmap);
+			pthread_mutex_lock(&reqListLock);
+			pthread_rwlock_rdlock(&commLock);
+			pthread_rwlock_wrlock(&wrapperLock);*/
+		}
 		return 1;
 	} else {
 		clock_gettime(CLOCK_REALTIME,&mpi_ft_ckpt_end_time);
@@ -1557,6 +1731,7 @@ PAREP_MPI_WRITE_CKPT_START:
 				read_heap_and_stack(ckpt_name);
 				parep_mpi_longjmp(parep_mpi_replication_initializer,2);
 			} else if(setjmp_status == 2) {
+				if(parep_mpi_argvp != NULL) *(parep_mpi_argvp) = parep_mpi_argv;
 				EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
 				printf("Longjmped to HEAPSTACKRESTORE SIDE after restore rank %d myrank %d\n",parep_mpi_rank,rank);
 				munmap(newStack,TEMP_STACK_SIZE);
@@ -1890,6 +2065,7 @@ PAREP_MPI_WRITE_CKPT_START:
 				pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
 			}*/
 		} else {
+			EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
 			pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 			if(rank == parep_mpi_leader_rank) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
 			pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
@@ -4402,6 +4578,8 @@ int MPI_Replica_rearrange(int *ctrmap, int *rtcmap) {
 
 /* MPI_Init */
 int MPI_Init (int *argc, char ***argv) {
+	parep_mpi_argcp = argc;
+	parep_mpi_argvp = argv;
 	parep_mpi_argc = *argc;
 	parep_mpi_argv = *argv;
 	if(parep_mpi_initialized) {
@@ -4429,6 +4607,7 @@ int MPI_Init (int *argc, char ***argv) {
 			parep_mpi_ckpt_wait = 1;
 			pthread_kill(pthread_self(),SIGUSR1);
 			while(parep_mpi_ckpt_wait) {;}
+			EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 			pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 			if(myrank == parep_mpi_leader_rank) parep_infiniband_cmd(PAREP_IB_CKPT_CREATED);
 			pthread_mutex_unlock(&parep_mpi_leader_rank_mutex);
@@ -6161,6 +6340,7 @@ int MPI_Irecv (void *buf, int count, MPI_Datatype datatype, int source, int tag,
 	ftreq->status.MPI_ERROR = 0;
 	ftreq->type = MPI_FT_RECV_REQUEST;
 	ftreq->bufloc = buf;
+	ftreq->cbuf = NULL;
 	
 	pthread_mutex_lock(&reqListLock);
 	/*pthread_rwlock_rdlock(&commLock);
@@ -6214,7 +6394,42 @@ int MPI_Irecv (void *buf, int count, MPI_Datatype datatype, int source, int tag,
 		if(size >= sizeof(int)) extracount = 1;
 		else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
 		else extracount = (((int)sizeof(int))/size) + 1;
-		curargs->buf = parep_mpi_malloc((count+extracount)*size);
+		if(count*size < 0x100000) {
+			curargs->buf = parep_mpi_malloc((count+extracount)*size);
+			
+			if(curargs->buf == NULL) {
+				pthread_mutex_lock(&parep_mpi_store_buf_sz_mutex);
+				pthread_mutex_lock(&rem_recv_msg_sent_mutex);
+				if(rem_recv_msg_sent == 0) {
+					int dyn_sock;
+					int ret;
+					dyn_sock = socket(AF_INET, SOCK_STREAM, 0);
+					do {
+						ret = connect(dyn_sock,(struct sockaddr *)(&parep_mpi_dyn_coordinator_addr),sizeof(parep_mpi_dyn_coordinator_addr));
+					} while(ret != 0);
+					int cmd = CMD_REM_RECV;
+					write(dyn_sock,&cmd,sizeof(int));
+					close(dyn_sock);
+					rem_recv_msg_sent = 1;
+				}
+				pthread_mutex_unlock(&rem_recv_msg_sent_mutex);
+				pthread_mutex_unlock(&reqListLock);
+				pthread_cond_wait(&parep_mpi_store_buf_sz_cond,&parep_mpi_store_buf_sz_mutex);
+				pthread_mutex_unlock(&parep_mpi_store_buf_sz_mutex);
+				pthread_mutex_lock(&reqListLock);
+				curargs->buf = parep_mpi_malloc((count+extracount)*size);
+			}
+
+			if(curargs->buf == NULL) {
+				printf("%d: buf null parep_mpi_store_buf_sz %p count %ld bsize %p parep_mpi_rank %d source %d\n",getpid(),parep_mpi_store_buf_sz,count,(count+extracount)*size,parep_mpi_rank,source);
+				while(1);
+			}
+			ftreq->cbuf = NULL;
+		} else {
+			commbuf_node_t *cbuf = get_commbuf_node((count+extracount)*size);
+			curargs->buf = cbuf->commbuf;
+			ftreq->cbuf = cbuf;
+		}
 		
 		curargs->completecmp = false;
 		curargs->completerep = false;

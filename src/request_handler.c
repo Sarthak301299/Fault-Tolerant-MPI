@@ -42,6 +42,8 @@ extern pthread_cond_t recvDataListCond;
 extern pthread_mutex_t collectiveLock;
 extern pthread_cond_t collectiveCond;
 
+extern int parep_mpi_num_commbuf_nodes;
+
 extern volatile sig_atomic_t parep_mpi_wait_block;
 
 reqNode *reqListInsert(MPI_Request req) {
@@ -224,7 +226,12 @@ bool test_all_ptp_requests() {
 							memcpy(start->req->bufloc,((ptpdata *)(start->req->storeloc))->buf,count*size);
 							memcpy(&(((ptpdata *)(start->req->storeloc))->id),((((ptpdata *)(start->req->storeloc))->buf) + (((count+extracount) * size) - sizeof(int))),sizeof(int));
 							if(((((ptpdata *)(start->req->storeloc))->id) & 0xF0000000) == 0x70000000) {
-								parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								if(start->req->cbuf == NULL) parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								else {
+									return_commbuf_node(start->req->cbuf);
+									((ptpdata *)(start->req->storeloc))->buf = NULL;
+									start->req->cbuf = NULL;
+								}
 								
 								(start->req->status).count = count;
 								if((((start->req->status).status).EMPI_TAG) == EMPI_ANY_TAG) (start->req->status).MPI_TAG = MPI_ANY_TAG;
@@ -266,7 +273,12 @@ bool test_all_ptp_requests() {
 							memcpy(start->req->bufloc,((ptpdata *)(start->req->storeloc))->buf,count*size);
 							memcpy(&(((ptpdata *)(start->req->storeloc))->id),((((ptpdata *)(start->req->storeloc))->buf) + (((count+extracount) * size) - sizeof(int))),sizeof(int));
 							if(((((ptpdata *)(start->req->storeloc))->id) & 0xF0000000) == 0x70000000) {
-								parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								if(start->req->cbuf == NULL) parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								else {
+									return_commbuf_node(start->req->cbuf);
+									((ptpdata *)(start->req->storeloc))->buf = NULL;
+									start->req->cbuf = NULL;
+								}
 								
 								(start->req->status).count = count;
 								if((((start->req->status).status).EMPI_TAG) == EMPI_ANY_TAG) (start->req->status).MPI_TAG = MPI_ANY_TAG;
@@ -431,7 +443,12 @@ void test_all_requests_no_lock() {
 							memcpy(start->req->bufloc,((ptpdata *)(start->req->storeloc))->buf,count*size);
 							memcpy(&(((ptpdata *)(start->req->storeloc))->id),((((ptpdata *)(start->req->storeloc))->buf) + (((count+extracount) * size) - sizeof(int))),sizeof(int));
 							if(((((ptpdata *)(start->req->storeloc))->id) & 0xF0000000) == 0x70000000) {
-								parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								if(start->req->cbuf == NULL) parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								else {
+									return_commbuf_node(start->req->cbuf);
+									((ptpdata *)(start->req->storeloc))->buf = NULL;
+									start->req->cbuf = NULL;
+								}
 								
 								(start->req->status).count = count;
 								if((((start->req->status).status).EMPI_TAG) == EMPI_ANY_TAG) (start->req->status).MPI_TAG = MPI_ANY_TAG;
@@ -468,7 +485,12 @@ void test_all_requests_no_lock() {
 							memcpy(start->req->bufloc,((ptpdata *)(start->req->storeloc))->buf,count*size);
 							memcpy(&(((ptpdata *)(start->req->storeloc))->id),((((ptpdata *)(start->req->storeloc))->buf) + (((count+extracount) * size) - sizeof(int))),sizeof(int));
 							if(((((ptpdata *)(start->req->storeloc))->id) & 0xF0000000) == 0x70000000) {
-								parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								if(start->req->cbuf == NULL) parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								else {
+									return_commbuf_node(start->req->cbuf);
+									((ptpdata *)(start->req->storeloc))->buf = NULL;
+									start->req->cbuf = NULL;
+								}
 								
 								(start->req->status).count = count;
 								if((((start->req->status).status).EMPI_TAG) == EMPI_ANY_TAG) (start->req->status).MPI_TAG = MPI_ANY_TAG;
@@ -631,7 +653,12 @@ void test_all_requests() {
 							memcpy(start->req->bufloc,((ptpdata *)(start->req->storeloc))->buf,count*size);
 							memcpy(&(((ptpdata *)(start->req->storeloc))->id),((((ptpdata *)(start->req->storeloc))->buf) + (((count+extracount) * size) - sizeof(int))),sizeof(int));
 							if(((((ptpdata *)(start->req->storeloc))->id) & 0xF0000000) == 0x70000000) {
-								parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								if(start->req->cbuf == NULL) parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								else {
+									return_commbuf_node(start->req->cbuf);
+									((ptpdata *)(start->req->storeloc))->buf = NULL;
+									start->req->cbuf = NULL;
+								}
 								
 								(start->req->status).count = count;
 								if((((start->req->status).status).EMPI_TAG) == EMPI_ANY_TAG) (start->req->status).MPI_TAG = MPI_ANY_TAG;
@@ -672,7 +699,12 @@ void test_all_requests() {
 							memcpy(start->req->bufloc,((ptpdata *)(start->req->storeloc))->buf,count*size);
 							memcpy(&(((ptpdata *)(start->req->storeloc))->id),((((ptpdata *)(start->req->storeloc))->buf) + (((count+extracount) * size) - sizeof(int))),sizeof(int));
 							if(((((ptpdata *)(start->req->storeloc))->id) & 0xF0000000) == 0x70000000) {
-								parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								if(start->req->cbuf == NULL) parep_mpi_free(((ptpdata *)(start->req->storeloc))->buf);
+								else {
+									return_commbuf_node(start->req->cbuf);
+									((ptpdata *)(start->req->storeloc))->buf = NULL;
+									start->req->cbuf = NULL;
+								}
 								
 								(start->req->status).count = count;
 								if((((start->req->status).status).EMPI_TAG) == EMPI_ANY_TAG) (start->req->status).MPI_TAG = MPI_ANY_TAG;
