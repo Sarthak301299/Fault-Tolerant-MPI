@@ -178,7 +178,14 @@ int main(int argc, char **argv) {
 		
 		if(empi_pid == 0) { //CHILD PROCESS
 			char exec[1024];
-			setenv("MV2_USE_UD_HYBRID","0",1);
+			if(getenv("COMP_PER_REP") != NULL) {
+				if(strcmp(getenv("COMP_PER_REP"),"-1")) {
+					setenv("MV2_UD_RETRY_COUNT","32768",1);
+				}
+			} else if(getenv("CMP_RATIO") != NULL) {
+				setenv("MV2_UD_RETRY_COUNT","32768",1);
+			}
+			//setenv("MV2_USE_UD_HYBRID","0",1);
 			sprintf(exec,"%s/bin/mpirun",getenv("PAREP_MPI_EMPI_PATH"));
 			char **newargv;
 			newargv = (char **)malloc(sizeof(char *)*(argc+1));

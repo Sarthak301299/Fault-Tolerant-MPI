@@ -19,10 +19,42 @@
 #define DYN_COORDINATOR_PORT 2582
 #define CMD_INFORM_PREDICT 30
 
+#define ACT_PRED 0
+#define ACT_KILL 1
+#define ACT_TRIG 2
+
 typedef struct {
-	int first;
+	pid_t first;
 	char second[MAX_FILENAME_LEN];
+	double ttk;
+	double ttp;
 } IntStringPair;
+
+void copyIntStringPair(IntStringPair *dest, IntStringPair *src) {
+	dest->first = src->first;
+	strcpy(dest->second,src->second);
+	dest->ttk = src->ttk;
+	dest->ttp = src->ttp;
+}
+
+struct ActionList{
+	IntStringPair *relpair;
+	int acttype;
+	double trigger;
+	struct ActionList *next;
+};
+
+typedef struct ActionList ActList;
+
+ActList *actListHead = NULL;
+
+void clearActList() {
+	while(actListHead != NULL) {
+		ActList *temp = actListHead;
+		actListHead = actListHead->next;
+		free(temp);
+	}
+}
 
 typedef struct {
 	int value;
@@ -77,9 +109,10 @@ void fisher_yates_shuffle(IntStringPair *array, int size) {
 	for (int i = size - 1; i > 0; i--) {
 		int j = rand() % (i + 1);
 		// Swap array[i] and array[j]
-		IntStringPair temp = array[i];
-		array[i] = array[j];
-		array[j] = temp;
+		IntStringPair temp;
+		copyIntStringPair(&temp,&(array[i]));
+		copyIntStringPair(&(array[i]),&(array[j]));
+		copyIntStringPair(&(array[j]),&temp);
 	}
 }
 
@@ -90,6 +123,12 @@ double weibull_distribution(double shape, double scale) {
 
 int uni_rand(int min, int max) {
 	return min + (rand() % (max - min));
+}
+
+bool probabCheck(double probability) {
+	if (probability >= 1.0) return true;
+	if (probability <= 0.0) return false;
+	return ((double)rand() / RAND_MAX) < probability;
 }
 
 IntStringPair *pid_node_pairs;
@@ -104,14 +143,20 @@ volatile char targnname[MAX_FILENAME_LEN];
 double gauss_mean;
 double gauss_var;
 double gauss_stddev;
+double precision;
+double recall;
 IntProbabilityPair *probvals;
 bool meanchanged = false;
 struct sockaddr_in saddr;
 
+double shape,scale;
+int failindexstart = 0;
+int failindexend = -1;
+
 volatile sig_atomic_t sigusr1_recvd = 0;
 volatile sig_atomic_t sigstate = 0;
 
-void inform_server() {
+void inform_server(ActList *act) {
 	if(getenv("PAREP_MPI_SIM_PREDICT") != NULL) {
 		if(!strcmp(getenv("PAREP_MPI_SIM_PREDICT"),"1")) {
 			int dyn_sock;
@@ -122,29 +167,152 @@ void inform_server() {
 			} while(ret != 0);
 			int cmd = CMD_INFORM_PREDICT;
 			write(dyn_sock,&cmd,sizeof(int));
+			write(dyn_sock,&(act->relpair->first),sizeof(pid_t));
+			write(dyn_sock,&(act->relpair->second),MAX_FILENAME_LEN);
 			close(dyn_sock);
-			
 		}
 	}
 }
 
-void dump_probs_and_sim_predict() {
-	if(getenv("PAREP_MPI_SIM_PREDICT") != NULL) {
-		if(!strcmp(getenv("PAREP_MPI_SIM_PREDICT"),"1")) {
-			FILE *probfile;
-			char directory[MAX_FILENAME_LEN];
-			strcpy(directory, getenv("PAREP_MPI_WORKDIR"));
-			char probfile_name[MAX_FILENAME_LEN];
-			sprintf(probfile_name,"%s/probfile",directory);
-			probfile = fopen(probfile_name, "w+");
-			for(int i = 0; i < alive; i++) {
-				int index;
-				index = probvals[i].value;
-				fprintf(probfile,"%d : %s : %f\n",shuffled_pairs[index].first,shuffled_pairs[index].second,probvals[i].probability);
+void create_kill_acts(IntStringPair *array, int size) {
+	assert(actListHead == NULL);
+	ActList *temp = actListHead;
+	for(int i = 0; i < size; i++) {
+		ActList *act = (ActList *)malloc(sizeof(ActList));
+		act->relpair = &(array[i]);
+		act->acttype = ACT_KILL;
+		act->trigger = -1;
+		act->next = NULL;
+		if(temp == NULL) {
+			actListHead = act;
+		} else {
+			temp->next = act;
+		}
+		temp = act;
+	}
+}
+
+void create_pred_acts(IntStringPair *array, int size) {
+	failindexstart = (failindexend+1);
+	int index = failindexstart;
+	double tottime = 0;
+	int tp = 0;
+	int fp = 0;
+	int nfail = 0;
+	tottime += array[index].ttk;
+	while(tottime < 1800) {
+		nfail++;
+		bool predict = probabCheck(recall);
+		if(predict) {
+			double lead_time = (double)uni_rand(60, 120);
+			if(array[index].ttk - lead_time >= 0) {
+				array[index].ttp = array[index].ttk - lead_time;
+				array[index].ttk = lead_time;
+			} else {
+				array[index].ttp = 0;
+				array[index].ttk = lead_time;
 			}
-			fclose(probfile);
+			tp++;
+			index++;
+			tottime += (array[index].ttp + array[index].ttk);
+		} else {
+			index++;
+			tottime += array[index].ttk;
 		}
 	}
+	failindexend = index-1;
+	double fracfp = (((double)tp)/precision) - (double)tp;
+	double fracprobab = fracfp - ((double)(floor(fracfp)));
+	bool roundup = probabCheck(fracprobab);
+	if(roundup) fp = ceil(fracfp);
+	else fp = floor(fracfp);
+	for(index = failindexstart; index <= failindexend; index++) {
+		if(array[index].ttp >= 0) {
+			ActList *temp = actListHead;
+			ActList *prev = NULL;
+			while(temp != NULL) {
+				if((temp->relpair) == &(array[index])) {
+					break;
+				}
+				prev = temp;
+				temp = temp->next;
+			}
+			assert(temp != NULL);
+			ActList *act = (ActList *)malloc(sizeof(ActList));
+			act->relpair = &(array[index]);
+			act->acttype = ACT_PRED;
+			act->trigger = -1;
+			if(prev != NULL) {
+				prev->next = act;
+			} else {
+				actListHead = act;
+			}
+			act->next = temp;
+		}
+	}
+	for(int fpcount=0; fpcount < fp; fpcount++) {
+		int targindex = uni_rand(failindexend+1,size);
+		array[targindex].ttp = uni_rand(0,1800);
+		ActList *temp = actListHead;
+		ActList *prev = NULL;
+		while(temp != NULL) {
+			double tasktime;
+			if(temp->acttype == ACT_PRED) tasktime = temp->relpair->ttp;
+			else if(temp->acttype == ACT_KILL) tasktime = temp->relpair->ttk;
+			if(array[targindex].ttp < tasktime) {
+				break;
+			} else {
+				array[targindex].ttp -= tasktime;
+			}
+			prev = temp;
+			temp = temp->next;
+		}
+		ActList *act = (ActList *)malloc(sizeof(ActList));
+		act->relpair = &(array[targindex]);
+		act->acttype = ACT_PRED;
+		act->trigger = -1;
+		if(prev != NULL) {
+			prev->next = act;
+		} else {
+			actListHead = act;
+		}
+		act->next = temp;
+		if(temp != NULL) {
+			if(temp->acttype == ACT_PRED) temp->relpair->ttp -= array[targindex].ttp;
+			else if(temp->acttype == ACT_KILL) temp->relpair->ttk -= array[targindex].ttp;
+		}
+	}
+	double trigtime = 1800;
+	ActList *temp = actListHead;
+	ActList *prev = NULL;
+	while(temp != NULL) {
+		double tasktime;
+		if(temp->acttype == ACT_PRED) tasktime = temp->relpair->ttp;
+		else if(temp->acttype == ACT_KILL) tasktime = temp->relpair->ttk;
+		if(trigtime < tasktime) {
+			break;
+		} else {
+			trigtime -= tasktime;
+		}
+		prev = temp;
+		temp = temp->next;
+	}
+	ActList *act = (ActList *)malloc(sizeof(ActList));
+	act->relpair = NULL;
+	act->acttype = ACT_TRIG;
+	act->trigger = trigtime;
+	if(prev != NULL) {
+		prev->next = act;
+	} else {
+		actListHead = act;
+	}
+	act->next = temp;
+	if(temp != NULL) {
+		if(temp->acttype == ACT_PRED) temp->relpair->ttp -= trigtime;
+		else if(temp->acttype == ACT_KILL) temp->relpair->ttk -= trigtime;
+	}
+	printf("Act list prepared nfail %d tp %d fp %d precision %f recall %f\n", nfail,tp,fp,precision,recall);
+	fflush(stdout);
 }
 
 void sigusr1_handler(int signum) {
@@ -179,18 +347,28 @@ void sigusr1_handler(int signum) {
 	for (int i = 0; i < N; i++) {
 		fscanf(file, "%d\n", &pid);
 		pid_node_pairs[i].first = pid;
+		pid_node_pairs[i].ttk = weibull_distribution(shape, scale);
+		if(pid_node_pairs[i].ttk < 150) pid_node_pairs[i].ttk = 150;
+		pid_node_pairs[i].ttp = -1;
 	}
 	fclose(file);
 	remove(file_name);
 	remove(dfile_name);
 	
-	num_killed = 0;
+	failindexstart = 0;
+	failindexend = -1;
 	for (int i = 0; i < N; i++) {
-		shuffled_pairs[i].first = pid_node_pairs[i].first;
-		strcpy((char *)shuffled_pairs[i].second, pid_node_pairs[i].second);
+		copyIntStringPair((IntStringPair *)(&(shuffled_pairs[i])),(IntStringPair *)(&(pid_node_pairs[i])));
 	}
 	fisher_yates_shuffle((IntStringPair *)shuffled_pairs, N);
-	dump_probs_and_sim_predict();
+	clearActList();
+	create_kill_acts((IntStringPair *)shuffled_pairs, N);
+	if(getenv("PAREP_MPI_SIM_PREDICT") != NULL) {
+		if(!strcmp(getenv("PAREP_MPI_SIM_PREDICT"),"1")) {
+			create_pred_acts((IntStringPair *)shuffled_pairs, N);
+		}
+	}
+	
 	sigusr1_recvd = 0;
 	sigprocmask(SIG_UNBLOCK, &mask, NULL);
 	assert(sigstate == 3);
@@ -202,11 +380,20 @@ int main(int argc, char **argv) {
 	alive = N; // number of alive processes
 	gauss_stddev = 1;
 	gauss_var = gauss_stddev*gauss_stddev;
+	precision = 1;
+	recall = 1;
+	if(getenv("PAREP_MPI_PREDICT_PRECISION") != NULL) {
+		double pre = atof(getenv("PAREP_MPI_PREDICT_PRECISION"));
+		precision = pre;
+	}
+	if(getenv("PAREP_MPI_PREDICT_RECALL") != NULL) {
+		double rec = atof(getenv("PAREP_MPI_PREDICT_RECALL"));
+		recall = rec;
+	}
 	double mean = -1; // mean time between failure in seconds
 	if(getenv("PAREP_MPI_MTBF")) mean = atof(getenv("PAREP_MPI_MTBF"));
 	//double shape = 1; // shape parameter for Weibull distribution
-	double shape = 0.7;
-	double scale;
+	shape = 0.7;
 	double lead_time;
 	if(mean != -1) scale = mean / (tgamma(1 + (1/shape))); // scale parameter for Weibull distribution
 
@@ -240,9 +427,7 @@ int main(int argc, char **argv) {
 	// Read PIDs and node names from files
 	pid_node_pairs = (IntStringPair *)malloc(N*sizeof(IntStringPair));
 	shuffled_pairs = (IntStringPair *)malloc(N*sizeof(IntStringPair));
-	killed_pairs = (IntStringPair *)malloc(N*sizeof(IntStringPair));
-	probvals = (IntProbabilityPair *)malloc(N*sizeof(IntProbabilityPair));
-	//time_between_failures = (double *)malloc(N*sizeof(double));
+	
 	char directory[MAX_FILENAME_LEN];
 	strcpy(directory, getenv("PAREP_MPI_WORKDIR"));
 	char nfile_name[MAX_FILENAME_LEN];
@@ -263,6 +448,9 @@ int main(int argc, char **argv) {
 		fscanf(node_file, "%s\n", node_name);
 		pid_node_pairs[i].first = pid;
 		strcpy(pid_node_pairs[i].second, node_name);
+		pid_node_pairs[i].ttk = weibull_distribution(shape, scale);
+		if(pid_node_pairs[i].ttk < 150) pid_node_pairs[i].ttk = 150;
+		pid_node_pairs[i].ttp = -1;
 	}
 	fclose(file);
 	fclose(node_file);
@@ -273,91 +461,35 @@ int main(int argc, char **argv) {
 		pause();
 	}
 
-	// Generate time between failures
-	//for (int i = 0; i < N; i++) {
-	//time_between_failures[i] = weibull_distribution(shape, scale);
-	//}
-
 	// Shuffle pids and node names
 	for (int i = 0; i < N; i++) {
-		shuffled_pairs[i].first = pid_node_pairs[i].first;
-		strcpy((char *)shuffled_pairs[i].second, pid_node_pairs[i].second);
+		copyIntStringPair((IntStringPair *)(&(shuffled_pairs[i])),(IntStringPair *)(&(pid_node_pairs[i])));
 	}
 
 	// Shuffle using Fisher-Yates algorithm
 	fisher_yates_shuffle((IntStringPair *)shuffled_pairs, N);
 	
-	//Generate a mean using uniform distribution for the alive processes
-	meanchanged = true;
-	gauss_mean = (double)uni_rand(0,alive);
-	for (int j = (gauss_mean - (alive/2)); j < (gauss_mean + (alive/2)); j++) {
-		int wrapped_j = wrap_around(j, alive); // Wrap the integer within range [0, N]
-		probvals[wrapped_j].value = wrapped_j;
-		probvals[wrapped_j].probability = normal_pdf(j, gauss_mean, gauss_var);
+	clearActList();
+	create_kill_acts((IntStringPair *)shuffled_pairs, N);
+	if(getenv("PAREP_MPI_SIM_PREDICT") != NULL) {
+		if(!strcmp(getenv("PAREP_MPI_SIM_PREDICT"),"1")) {
+			create_pred_acts((IntStringPair *)shuffled_pairs, N);
+		}
 	}
-	qsort(probvals,alive,sizeof(IntProbabilityPair),compare);
-	if(meanchanged) {
-		meanchanged = false;
-		dump_probs_and_sim_predict();
-	}
-	// Kill processes after generated time has passed
-	int i = wrap_around(generate_random_int(gauss_mean,gauss_var),alive);
-	while(1) {
-		char kill_command[MAX_FILENAME_LEN];
-		int ret;
-		bool proc_killed = false;
-		for(int k = 0; k < num_killed; k++) {
-			if((shuffled_pairs[i].first == killed_pairs[k].first) && (!strcmp((char *)shuffled_pairs[i].second,(char *)killed_pairs[k].second))) {
-				proc_killed = true;
-				break;
-			}
-		}
-		while (proc_killed) {
-			if(rand() % 10 == 0) { // Change mean by 10% chance
-				meanchanged = true;
-				gauss_mean = (double)uni_rand(0,alive);
-				for (int j = (gauss_mean - (alive/2)); j < (gauss_mean + (alive/2)); j++) {
-					int wrapped_j = wrap_around(j, alive);
-					probvals[wrapped_j].value = wrapped_j;
-					probvals[wrapped_j].probability = normal_pdf(j, gauss_mean, gauss_var);
-				}
-				qsort(probvals,alive,sizeof(IntProbabilityPair),compare);
-			}
-			i = wrap_around(generate_random_int(gauss_mean,gauss_var),alive);
-			proc_killed = false;
-			for(int k = 0; k < num_killed; k++) {
-				if((shuffled_pairs[i].first == killed_pairs[k].first) && (!strcmp((char *)shuffled_pairs[i].second,(char *)killed_pairs[k].second))) {
-					proc_killed = true;
-					break;
-				}
-			}
-		}
-		if(meanchanged) {
-			meanchanged = false;
-			dump_probs_and_sim_predict();
-		}
-		targpid = shuffled_pairs[i].first;
-		strcpy((char *)targnname, (char *)shuffled_pairs[i].second);
-		double ktime = weibull_distribution(shape, scale);
-		if(ktime < 150) ktime = 150;
-		int findex = -1;
-		for (int k = 0; k < alive; k++) {
-			int index;
-			index = probvals[k].value;
-			if((shuffled_pairs[index].first == targpid) && (!strcmp((char *)shuffled_pairs[index].second,(char *)targnname))) {
-				findex = k;
-				break;
-			}
-		}
-		printf("Process %d on node %s: Time before failure = %f seconds. Failure index = %d\n", targpid, targnname, ktime, findex);
-		fflush(stdout);
+	
+	ActList *curact = actListHead;
+	while(curact != NULL) {
+		double tasktime;
+		if(curact->acttype == ACT_PRED) tasktime = curact->relpair->ttp;
+		else if(curact->acttype == ACT_KILL) tasktime = curact->relpair->ttk;
+		else if(curact->acttype == ACT_TRIG) tasktime = curact->trigger;
 		struct pollfd pfd;
 		pfd.fd = -1;
 		pfd.events = 0;
 		pfd.revents = 0;
 		struct timespec wtime;
 		double fractpart, intpart;
-		fractpart = modf(ktime,&intpart);
+		fractpart = modf(tasktime,&intpart);
 		wtime.tv_sec = (long)intpart;
 		wtime.tv_nsec = (long)(fractpart*1000000000);
 		int pout = -1;
@@ -366,133 +498,64 @@ int main(int argc, char **argv) {
 			sigusr1_recvd = 2;
 			raise(SIGUSR1);
 			while(sigusr1_recvd);
-			targpid = shuffled_pairs[i].first;
-			strcpy((char *)targnname, (char *)shuffled_pairs[i].second);
-			printf("Updated Process %d on node %s: Time before failure = %ld seconds %ld nsec\n", targpid, targnname, wtime.tv_sec,wtime.tv_nsec);
-			fflush(stdout);
+			curact = actListHead;
+			continue;
 		}
 		
-		if(getenv("PAREP_MPI_SIM_PREDICT") != NULL) {
-			if(!strcmp(getenv("PAREP_MPI_SIM_PREDICT"),"1")) {
-				lead_time = 60 + (((double)rand() / RAND_MAX)*(60));
-				wtime.tv_sec = wtime.tv_sec - lead_time;
-			}
-		}
+		if((curact->acttype == ACT_PRED) || (curact->acttype == ACT_KILL)) printf("Starting timer for process %d on node %s: type %d tasktime %f\n",curact->relpair->first,curact->relpair->second,curact->acttype,tasktime);
+		else printf("Starting timer for Trigger: type %d tasktime %f\n",curact->acttype,tasktime);
+		fflush(stdout);
 		
 		sigstate = 0;
+		bool restarted = false;
 		do {
 			clock_gettime(CLOCK_MONOTONIC, &start_time);
 			pout = ppoll(&pfd,1,&wtime,NULL);
 			if(pout == -1 && errno == EINTR) {
-				clock_gettime(CLOCK_MONOTONIC, &end_time);
-				elap_time.tv_sec = end_time.tv_sec - start_time.tv_sec;
-				elap_time.tv_nsec = end_time.tv_nsec - start_time.tv_nsec;
-				while (elap_time.tv_nsec < 0) {
-					elap_time.tv_sec--;
-					elap_time.tv_nsec += 1000000000;
-				}
-				if(elap_time.tv_sec < 0) {
-					elap_time.tv_sec = 0;
-					elap_time.tv_nsec = 0;
-				}
-
-				wtime.tv_sec = wtime.tv_sec - elap_time.tv_sec;
-				wtime.tv_nsec = wtime.tv_nsec - elap_time.tv_nsec;
-				while (wtime.tv_nsec < 0) {
-					wtime.tv_sec--;
-					wtime.tv_nsec += 1000000000;
-				}
-				if(wtime.tv_sec < 0) {
-					wtime.tv_sec = 0;
-					wtime.tv_nsec = 0;
-				}
-				targpid = shuffled_pairs[i].first;
-				strcpy((char *)targnname, (char *)shuffled_pairs[i].second);
-				printf("Updated Process %d on node %s: Time before failure = %ld seconds %ld nsec\n", targpid, targnname, wtime.tv_sec,wtime.tv_nsec);
-				fflush(stdout);
+				restarted = true;
+				break;
 			}
 		} while(pout == -1 && errno == EINTR);
+		if(restarted) {
+			curact = actListHead;
+			continue;
+		}
 		assert(pout == 0);
-		
-		if(getenv("PAREP_MPI_SIM_PREDICT") != NULL) {
-			if(!strcmp(getenv("PAREP_MPI_SIM_PREDICT"),"1")) {
-				sigstate = 1;
-				inform_server();
-				wtime.tv_sec = lead_time;
-				wtime.tv_nsec = 0;
-				pout = -1;
-				if(sigstate == 2) {
-					sigstate = 0;
-					sigusr1_recvd = 2;
-					raise(SIGUSR1);
-					while(sigusr1_recvd);
-				}
-				sigstate = 0;
-				do {
-					clock_gettime(CLOCK_MONOTONIC, &start_time);
-					pout = ppoll(&pfd,1,&wtime,NULL);
-					if(pout == -1 && errno == EINTR) {
-						clock_gettime(CLOCK_MONOTONIC, &end_time);
-						elap_time.tv_sec = end_time.tv_sec - start_time.tv_sec;
-						elap_time.tv_nsec = end_time.tv_nsec - start_time.tv_nsec;
-						while (elap_time.tv_nsec < 0) {
-							elap_time.tv_sec--;
-							elap_time.tv_nsec += 1000000000;
-						}
-						if(elap_time.tv_sec < 0) {
-							elap_time.tv_sec = 0;
-							elap_time.tv_nsec = 0;
-						}
-
-						wtime.tv_sec = wtime.tv_sec - elap_time.tv_sec;
-						wtime.tv_nsec = wtime.tv_nsec - elap_time.tv_nsec;
-						while (wtime.tv_nsec < 0) {
-							wtime.tv_sec--;
-							wtime.tv_nsec += 1000000000;
-						}
-						if(wtime.tv_sec < 0) {
-							wtime.tv_sec = 0;
-							wtime.tv_nsec = 0;
-						}
-						if(wtime.tv_sec < 30) {
-							wtime.tv_sec = 30;
-							wtime.tv_nsec = 0;
-						}
-						targpid = shuffled_pairs[i].first;
-						strcpy((char *)targnname, (char *)shuffled_pairs[i].second);
-						printf("Updated Process %d on node %s: Time before failure = %ld seconds %ld nsec\n", targpid, targnname, wtime.tv_sec,wtime.tv_nsec);
-						fflush(stdout);
-						inform_server();
-					}
-				} while(pout == -1 && errno == EINTR);
-				assert(pout == 0);
-			}
-		}
-		//usleep(time_between_failures[i] * 1000000); // sleep for time before failure in microseconds
-		//Execute kill command (uncomment and modify as needed)
-		sprintf(kill_command, "ssh %s kill -9 %d", targnname, targpid);
-		do {
-			ret = system(kill_command);
-			printf("Failure injector system returned %d\n",ret);
+		int trigger = 0;
+		if(curact->acttype == ACT_KILL) {
+			char kill_command[MAX_FILENAME_LEN];
+			int ret;
+			printf("Process %d on node %s: Kill TTK %f\n",curact->relpair->first,curact->relpair->second,curact->relpair->ttk);
 			fflush(stdout);
-		} while(ret != 0);
-		sigstate = 1;
-		killed_pairs[num_killed].first = targpid;
-		strcpy((char *)killed_pairs[num_killed].second,(char *)targnname);
-		num_killed++;
-		
-		if(rand() % 4 == 0) { // Change mean by 25% chance
-			meanchanged = true;
-			gauss_mean = (double)uni_rand(0,alive);
-			for (int j = (gauss_mean - (alive/2)); j < (gauss_mean + (alive/2)); j++) {
-				int wrapped_j = wrap_around(j, alive);
-				probvals[wrapped_j].value = wrapped_j;
-				probvals[wrapped_j].probability = normal_pdf(j, gauss_mean, gauss_var);
+			sprintf(kill_command, "ssh %s kill -9 %d", curact->relpair->second, curact->relpair->first);
+			do {
+				ret = system(kill_command);
+				printf("Failure injector system returned %d\n",ret);
+				fflush(stdout);
+			} while(ret != 0);
+		} else if(curact->acttype == ACT_PRED) {
+			sigstate = 1;
+			printf("Process %d on node %s: Predict TTP %f\n",curact->relpair->first,curact->relpair->second,curact->relpair->ttp);
+			fflush(stdout);
+			inform_server(curact);
+			if(sigstate == 2) {
+				sigstate = 0;
+				sigusr1_recvd = 2;
+				raise(SIGUSR1);
+				while(sigusr1_recvd);
+				curact = actListHead;
+				continue;
 			}
-			qsort(probvals,alive,sizeof(IntProbabilityPair),compare);
+			sigstate = 0;
+		} else if(curact->acttype == ACT_TRIG) {
+			trigger = 1;
 		}
-		i = wrap_around(generate_random_int(gauss_mean,gauss_var),alive);
+		actListHead = actListHead->next;
+		free(curact);
+		if(trigger) {
+			create_pred_acts((IntStringPair *)shuffled_pairs, N);
+		}
+		curact = actListHead;
 	}
-
 	return 0;
 }
