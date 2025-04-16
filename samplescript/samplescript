@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=testjob
+#SBATCH --ntasks-per-node=32
+#SBATCH -N 256
+#SBATCH --time=24:00:00
+#SBATCH --partition=large
+#SBATCH --output=job.%J.out
+
+cd $SLURM_SUBMIT_DIR
+nodelist=$(scontrol show hostname $SLURM_JOB_NODELIST)
+printf "%s\n" "${nodelist[@]}" > pbs_nodesuniq
+awk -v n="$SLURM_NTASKS_PER_NODE" '{for(i=0;i<n;i++) print}' pbs_nodesuniq > pbs_nodes
+
+cp pbs_nodes $PAREP_MPI_BASE_WORKDIR/checkpoint/pbs_nodes$SLURM_JOB_ID
+NPROCS=`wc -l < pbs_nodes`
+NNODES=`uniq pbs_nodes | wc -l`
+
+export PAREP_MPI_MTBF=2000
+
+export PAREP_MPI_SIM_PREDICT=1
+
+export PAREP_MPI_PREDICT_PRECISION=0.5
+export PAREP_MPI_PREDICT_RECALL=0.5
+
+export CMP_RATIO=8112
+export REP_RATIO=80
+
+mpirun -np 8192 -ckpt_interval 1311 --hostfile $PAREP_MPI_BASE_WORKDIR/checkpoint/pbs_nodes$SLURM_JOB_ID <path_to_xhpcg_executable>/xhpcg --nx=128 --ny=128 --nz=128 --rt=10800
+rm -rf $PAREP_MPI_BASE_WORKDIR/checkpoint/$SLURM_JOB_ID
+
+rm $PAREP_MPI_BASE_WORKDIR/checkpoint/pbs_nodes$SLURM_JOB_ID
