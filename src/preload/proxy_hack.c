@@ -96,6 +96,7 @@ void *poll_coordinator(void *arg) {
 			if((pfd.revents & POLLHUP) || (pfd.revents & POLLERR)) {
 				printf("EMPI code: POLLUP/POLLERR on coordinator socket POLLIN %d\n",(pfd.revents & POLLIN));
 				fflush(stdout);
+				while(1);
 				exit(0);
 				pthread_mutex_lock(&safe_to_pass_mutex);
 				safe_to_pass = 1;
