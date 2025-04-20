@@ -18,14 +18,11 @@ N = 8192
 C = 215
 M = 2000
 
-xaxis = [0.1,0.25,0.33]
-norecall = []
-halfrecall = []
-nintyrecall = []
-fullrecall = []
+rdeg = [0.1,0.25,0.33]
+recall = [0.5]
 
-for r in xaxis:
-    for R in [0.5]:
+for r in rdeg:
+    for R in recall:
         b = round(N*r)
         if b == 82:
             b = 80
@@ -39,12 +36,3 @@ for r in xaxis:
         Ckpt = C*(a+b)/N
         Topt = math.sqrt(2*Mintr*Ckpt)
         print("r =",r,", R =",R,", b =",b,"a =",a," a+b =",a+b,"(a+b)/N",(a+b)/N,"Eab =",Eab,"Mintr =",Mintr,"Ckpt =",Ckpt,"Topt =",Topt)
-        if R == 0:
-            norecall.append(Eab)
-        else: 
-            if R == 0.5:
-                halfrecall.append(Eab)
-            if R == 0.9:
-                nintyrecall.append(Eab)
-            if R == 1:
-                fullrecall.append(Eab)
