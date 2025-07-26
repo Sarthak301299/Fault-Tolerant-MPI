@@ -1,0 +1,41 @@
+Number of Processes,Test Case,Percentage of Time spent (%),Stack
+1024,Checkpointing,3.995876256,Checkpoint Creation
+1024,Replication,0,Checkpoint Creation
+2048,Checkpointing,6.300183461,Checkpoint Creation
+2048,Replication,0,Checkpoint Creation
+4096,Checkpointing,9.780803766,Checkpoint Creation
+4096,Replication,0,Checkpoint Creation
+8192,Checkpointing,15.92557407,Checkpoint Creation
+8192,Replication,0,Checkpoint Creation
+1024,Checkpointing,0,Restore from Checkpoint
+1024,Replication,0,Restore from Checkpoint
+2048,Checkpointing,0.969258994,Restore from Checkpoint
+2048,Replication,0,Restore from Checkpoint
+4096,Checkpointing,8.102440989,Restore from Checkpoint
+4096,Replication,0,Restore from Checkpoint
+8192,Checkpointing,16.60194981,Restore from Checkpoint
+8192,Replication,0,Restore from Checkpoint
+1024,Checkpointing,0,Rollback + Communicator Recreation + Message Recovery
+1024,Replication,0,Rollback + Communicator Recreation + Message Recovery
+2048,Checkpointing,6.30061964,Rollback + Communicator Recreation + Message Recovery
+2048,Replication,0.377903419,Rollback + Communicator Recreation + Message Recovery
+4096,Checkpointing,10.41163667,Rollback + Communicator Recreation + Message Recovery
+4096,Replication,0.556931715,Rollback + Communicator Recreation + Message Recovery
+8192,Checkpointing,27.70373513,Rollback + Communicator Recreation + Message Recovery
+8192,Replication,1.697276578,Rollback + Communicator Recreation + Message Recovery
+1024,Checkpointing,0.059938144,Log Removal
+1024,Replication,0.108342822,Log Removal
+2048,Checkpointing,0.31244756,Log Removal
+2048,Replication,0.271271345,Log Removal
+4096,Checkpointing,0.261187973,Log Removal
+4096,Replication,0.437146868,Log Removal
+8192,Checkpointing,0.26572343,Log Removal
+8192,Replication,1.020841142,Log Removal
+1024,Checkpointing,95.9441856,Useful Work
+1024,Replication,99.89165718,Useful Work
+2048,Checkpointing,86.11749035,Useful Work
+2048,Replication,99.35082524,Useful Work
+4096,Checkpointing,71.4439306,Useful Work
+4096,Replication,99.00592142,Useful Work
+8192,Checkpointing,39.50301756,Useful Work
+8192,Replication,97.28188228,Useful Work

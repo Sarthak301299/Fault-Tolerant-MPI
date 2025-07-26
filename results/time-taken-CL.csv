@@ -1,0 +1,7 @@
+Number of Processes,Test Case,Time Taken (s)
+2048,Checkpointing,29594.91502
+2048,Replication,48691.46809
+4096,Checkpointing,18337.95832
+4096,Replication,24348.05971
+8192,Checkpointing,14992.39417
+8192,Replication,13036.95633

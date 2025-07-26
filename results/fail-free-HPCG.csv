@@ -1,0 +1,3 @@
+Test Case,Performance (GFLOP/s)
+MVAPICH2 (4096),1268.973333
+FTHP-MPI with Replication (4096+4096),1252.266667

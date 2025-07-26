@@ -1,0 +1,10 @@
+Number of Processes,Test Case,Performance (GFLOP/s)
+1024,Failure Free,327.3486
+1024,Checkpointing,326.6614
+1024,Replication,175.4424
+2048,Checkpointing,568.8262
+2048,Replication,338.726
+4096,Checkpointing,933.5838
+4096,Replication,650.6466
+8192,Checkpointing,1037.4106
+8192,Replication,1273.728
