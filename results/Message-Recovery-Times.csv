@@ -1,0 +1,5 @@
+Number of Processes,Message Recovery Time (seconds)
+1024,2.408
+2048,4.037
+4096,8.4275
+8192,11.9265

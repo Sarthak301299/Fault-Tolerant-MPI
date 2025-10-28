@@ -1,0 +1,5 @@
+Number of Processes,Log Removal Time (seconds)
+1024,0.383
+2048,0.83125
+4096,1.853
+8192,3.60875
