@@ -225,6 +225,8 @@ void parep_mpi_ckpt_coordinator_init() {
 		parep_mpi_node_group_nodeids = (int *)malloc(sizeof(int) * parep_mpi_node_num);
 		parep_mpi_node_group_sizes = (int *)malloc(sizeof(int) * parep_mpi_node_group_num);
 		parep_mpi_node_group_nodesizes = (int *)malloc(sizeof(int) * parep_mpi_node_group_num);
+		parep_mpi_node_group_leader_nodeids = (int *)malloc(sizeof(int) * parep_mpi_node_num);
+		parep_mpi_all_ranks = (int *)malloc(sizeof(int) * parep_mpi_size);
 		
 		parep_mpi_num_inform_failed_node = (int *)malloc(sizeof(int) * parep_mpi_node_num);
 		parep_mpi_num_inform_failed_node_group = (int *)malloc(sizeof(int) * parep_mpi_node_group_num);
@@ -274,6 +276,7 @@ void parep_mpi_ckpt_coordinator_init() {
 			coordinator_name[i] = (char *)malloc(HOST_NAME_MAX);
 			daemon_state[i] = PROC_UNINITIALIZED;
 			parep_mpi_num_inform_failed_node[i] = 0;
+			parep_mpi_node_group_leader_nodeids[i] = 0;
 		}
 		for(int i = 1; i < parep_mpi_node_group_size; i++) {
 			group_daemon_state[i] = PROC_UNINITIALIZED;
@@ -282,13 +285,13 @@ void parep_mpi_ckpt_coordinator_init() {
 	} else {
 		parep_mpi_inform_failed_check = (bool *)malloc(sizeof(bool) * parep_mpi_node_size);
 		local_proc_state = (int *)malloc(sizeof(int) * parep_mpi_node_size);
-		if(parep_mpi_node_group_id == 0) group_daemon_state = (int *)malloc(sizeof(int) * parep_mpi_node_group_size);
+		if(parep_mpi_node_group_nodeid == 0) group_daemon_state = (int *)malloc(sizeof(int) * parep_mpi_node_group_size);
 		pthread_mutex_lock(&proc_state_mutex);
 		for(int i = 0; i < parep_mpi_node_size; i++) {
 			parep_mpi_inform_failed_check[i] = false;
 			local_proc_state[i] = PROC_UNINITIALIZED;
 		}
-		if(parep_mpi_node_group_id == 0) {
+		if(parep_mpi_node_group_nodeid == 0) {
 			for(int i = 1; i < parep_mpi_node_group_size; i++) {
 				group_daemon_state[i] = PROC_UNINITIALIZED;
 			}
@@ -346,6 +349,7 @@ void parep_mpi_ckpt_coordinator_init() {
 	}
 	
 	pthread_create(&empi_thread,NULL,empi_thread_function,NULL);
+	if(isMainServer) pthread_create(&empi_exec_thread,NULL,empi_thread_function,NULL);
 	
 	if(isMainServer) {
 		check((server_socket = socket(AF_INET,SOCK_STREAM,0)),"Failed to create socket");
@@ -357,6 +361,8 @@ void parep_mpi_ckpt_coordinator_init() {
 		
 		check(bind(server_socket,(SA *)&server_addr,sizeof(server_addr)),"Bind Failed!");
 		check(listen(server_socket,parep_mpi_node_num - 1),"Listen Failed!");
+		parep_mpi_node_group_sizes[0]++;
+		parep_mpi_node_group_nodesizes[0] += parep_mpi_node_size;
 		for(int i = 1; i < parep_mpi_node_num; i++) {
 			addr_size = sizeof(SA_IN);
 			int tmpsock;
@@ -512,6 +518,8 @@ void parep_mpi_ckpt_coordinator_init() {
 				
 				check(bind(server_group_socket,(SA *)&server_addr,sizeof(server_addr)),"Bind Failed!");
 				check(listen(server_group_socket,parep_mpi_node_group_size - 1),"Listen Failed!");
+				
+				daemon_socket[0] = -1;
 				
 				for(int i = 1; i < parep_mpi_node_group_size; i++) {
 					addr_size = sizeof(SA_IN);
@@ -681,6 +689,7 @@ void parep_mpi_ckpt_coordinator_init() {
 		for(int i = rank_lims_all[0].start; i <= rank_lims_all[0].end; i++) {
 			global_proc_state[i] = PROC_RUNNING;
 			parep_mpi_global_pids[i] = parep_mpi_pids[i];
+			parep_mpi_all_ranks[i] = parep_mpi_ranks[i];
 		}
 		pthread_mutex_unlock(&proc_state_mutex);
 		size_t bytes_read;
@@ -703,6 +712,13 @@ void parep_mpi_ckpt_coordinator_init() {
 				}
 				check(bytes_read,"recv error gpids");
 				
+				msgsize = 0;
+				while((bytes_read = read(daemon_socket[i],(&(parep_mpi_all_ranks[rank_lims_all[i].start])) + msgsize, (sizeof(int) * (rank_lims_all[i].end - rank_lims_all[i].start + 1))-msgsize)) > 0) {
+					msgsize += bytes_read;
+					if(msgsize >= (sizeof(int) * (rank_lims_all[i].end - rank_lims_all[i].start + 1))) break;
+				}
+				check(bytes_read,"recv error granks");
+				
 				if(parep_mpi_node_group_nodeids[i] == 0) {
 					int num_ranks = 0;
 					for(int j = 1; (i+j < parep_mpi_node_num) && (parep_mpi_node_group_nodeids[j] != 0); j++) {
@@ -712,6 +728,13 @@ void parep_mpi_ckpt_coordinator_init() {
 							if(msgsize >= (sizeof(pid_t) * (rank_lims_all[i+j].end - rank_lims_all[i+j].start + 1))) break;
 						}
 						check(bytes_read,"recv error ghpids");
+						
+						msgsize = 0;
+						while((bytes_read = read(daemon_socket[i],(&(parep_mpi_all_ranks[rank_lims_all[i+j].start])) + msgsize, (sizeof(int) * (rank_lims_all[i+j].end - rank_lims_all[i+j].start + 1))-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int) * (rank_lims_all[i+j].end - rank_lims_all[i+j].start + 1))) break;
+						}
+						check(bytes_read,"recv error ghranks");
 					}
 				}
 				
@@ -738,6 +761,7 @@ void parep_mpi_ckpt_coordinator_init() {
 		int local_procs_initialized = 1;
 		write_to_fd(daemon_client_socket,&local_procs_initialized,sizeof(int));
 		write_to_fd(daemon_client_socket,parep_mpi_pids,parep_mpi_node_size*sizeof(pid_t));
+		write_to_fd(daemon_client_socket,parep_mpi_ranks,parep_mpi_node_size*sizeof(int));
 		if(parep_mpi_node_group_nodeid == 0) {
 			size_t bytes_read;
 			int msgsize = 0;
@@ -751,6 +775,7 @@ void parep_mpi_ckpt_coordinator_init() {
 				check(bytes_read,"recv error llpinit");
 				int lpinit = *((int *)buffer);
 				assert(lpinit == 1);
+				group_daemon_state[i] = PROC_RUNNING;
 				msgsize = 0;
 				pid_t *pidbuf = (pid_t *)malloc(sizeof(pid_t)*parep_mpi_node_sizes[i]);
 				while((bytes_read = read(daemon_socket[i],((char *)pidbuf) + msgsize, (sizeof(pid_t) * parep_mpi_node_sizes[i])-msgsize)) > 0) {
@@ -758,8 +783,19 @@ void parep_mpi_ckpt_coordinator_init() {
 					if(msgsize >= ((sizeof(pid_t) * parep_mpi_node_sizes[i])-msgsize)) break;
 				}
 				check(bytes_read,"recv error pidbuf");
+				
+				msgsize = 0;
+				int *rankbuf = (int *)malloc(sizeof(int)*parep_mpi_node_sizes[i]);
+				while((bytes_read = read(daemon_socket[i],((char *)rankbuf) + msgsize, (sizeof(int) * parep_mpi_node_sizes[i])-msgsize)) > 0) {
+					msgsize += bytes_read;
+					if(msgsize >= ((sizeof(int) * parep_mpi_node_sizes[i])-msgsize)) break;
+				}
+				check(bytes_read,"recv error rankbuf");
+				
 				write_to_fd(daemon_client_socket,pidbuf,parep_mpi_node_sizes[i]*sizeof(pid_t));
+				write_to_fd(daemon_client_socket,rankbuf,parep_mpi_node_sizes[i]*sizeof(int));
 				free(pidbuf);
+				free(rankbuf);
 			}
 		}
 	}
@@ -921,7 +957,7 @@ void *run_ckpt_timer(void *arg) {
 				int cmd = CMD_CREATE_CKPT;
 				pthread_mutex_lock(&daemon_sock_mutex);
 				for(int j = 1; j < parep_mpi_node_num; j++) {
-					if((daemon_state[j] != PROC_TERMINATED) && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+					if((daemon_state[j] != PROC_TERMINATED) && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 						write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 					}
 				}
@@ -934,6 +970,134 @@ void *run_ckpt_timer(void *arg) {
 			}
 		}
 	}
+}
+
+void get_group_server_from_main() {
+	int dsock;
+	check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+	int cmd = CMD_GET_NGROUP_LEADER;
+	int ret;
+	int old_leader;
+	do {
+		ret = connect(dsock,(struct sockaddr *)(&(main_coordinator_addr)),sizeof(main_coordinator_addr));
+	} while(ret != 0);
+	write_to_fd(dsock,&cmd,sizeof(int));
+	write_to_fd(dsock,&parep_mpi_node_group_id,sizeof(int));
+	write_to_fd(dsock,&parep_mpi_node_group_nodeid,sizeof(int));
+	write_to_fd(dsock,&parep_mpi_node_group_leader_nodeid,sizeof(int));
+	
+	int new_group_leader_nodeid;
+	int msgsize = 0;
+	size_t bytes_read;
+	while((bytes_read = read(dsock,(&new_group_leader_nodeid)+msgsize, sizeof(int)-msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= (sizeof(int))) break;
+	}
+	old_leader = parep_mpi_node_group_leader_nodeid;
+	parep_mpi_node_group_leader_nodeid = new_group_leader_nodeid;
+	
+	char IP_addr[256];
+	msgsize = 0;
+	while((bytes_read = read(dsock,IP_addr+msgsize, 256-msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= 256) break;
+	}
+	group_main_coordinator_addr.sin_family = AF_INET;
+	group_main_coordinator_addr.sin_addr.s_addr = inet_addr(IP_addr);
+	group_main_coordinator_addr.sin_port = htons(COORDINATOR_GROUP_PORT);
+	if(new_group_leader_nodeid == parep_mpi_node_group_nodeid) {
+		group_coordinator_addr = (SA_IN *)malloc(sizeof(SA_IN) * parep_mpi_node_group_size);
+		daemon_socket = (int *)malloc(sizeof(int) * parep_mpi_node_group_size);
+		parep_mpi_node_sizes = (int *)malloc(sizeof(int) * parep_mpi_node_group_size);
+		group_daemon_state = (int *)malloc(sizeof(int) * parep_mpi_node_group_size);
+		msgsize = 0;
+		while((bytes_read = read(dsock,((char *)group_coordinator_addr)+msgsize, (sizeof(SA_IN) * parep_mpi_node_group_size)-msgsize)) > 0) {
+			msgsize += bytes_read;
+			if(msgsize >= (sizeof(SA_IN) * parep_mpi_node_group_size)) break;
+		}
+		check(bytes_read,"recv error Gcoord addr");
+		
+		msgsize = 0;
+		while((bytes_read = read(dsock,((char *)parep_mpi_node_sizes)+msgsize, (sizeof(int) * parep_mpi_node_group_size)-msgsize)) > 0) {
+			msgsize += bytes_read;
+			if(msgsize >= (sizeof(int) * parep_mpi_node_group_size)) break;
+		}
+		check(bytes_read,"recv error Gcoord sizes");
+		
+		msgsize = 0;
+		while((bytes_read = read(dsock,((char *)group_daemon_state)+msgsize, (sizeof(int) * parep_mpi_node_group_size)-msgsize)) > 0) {
+			msgsize += bytes_read;
+			if(msgsize >= (sizeof(int) * parep_mpi_node_group_size)) break;
+		}
+		check(bytes_read,"recv error Dstate");
+		
+		group_daemon_state[old_leader] = PROC_TERMINATED;
+		
+		parep_mpi_node_group_nodesize = 0;
+		for(int i = 0; i < parep_mpi_node_group_size; i++) {
+			parep_mpi_node_group_nodesize += parep_mpi_node_sizes[i];
+			daemon_socket[i] = -1;
+		}
+		parep_mpi_num_failed += parep_mpi_node_sizes[old_leader];
+		
+		int option = 1;
+		check((server_group_socket = socket(AF_INET,SOCK_STREAM,0)),"Failed to create socket");
+		setsockopt(server_group_socket,SOL_SOCKET,SO_REUSEADDR,&option,sizeof(option));
+		
+		SA_IN server_addr, client_addr;
+		int addr_size;
+		server_addr.sin_family = AF_INET;
+		server_addr.sin_addr.s_addr = INADDR_ANY;
+		server_addr.sin_port = htons(COORDINATOR_GROUP_PORT);
+		
+		check(bind(server_group_socket,(SA *)&server_addr,sizeof(server_addr)),"Bind Failed!");
+		check(listen(server_group_socket,parep_mpi_node_group_size - 1),"Listen Failed!");
+		
+		pthread_mutex_lock(&proc_state_mutex);
+		for(int i = 0; i < parep_mpi_node_group_size; i++) {
+			if((i != parep_mpi_node_group_nodeid) && (group_daemon_state[i] != PROC_TERMINATED)) {
+				addr_size = sizeof(SA_IN);
+				int tmpsock;
+				tmpsock = accept(server_group_socket, (SA *)&client_addr, (socklen_t *)&addr_size);
+				if((tmpsock == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+					while((tmpsock == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+						rlim_nofile.rlim_cur *= 2;
+						assert(rlim_nofile.rlim_cur <= rlim_nofile.rlim_max);
+						setrlimit(RLIMIT_NOFILE,&rlim_nofile);
+						tmpsock = accept(server_group_socket, (SA *)&client_addr, (socklen_t *)&addr_size);
+					}
+					check(tmpsock,"accept failed");
+				} else check(tmpsock,"accept failed");
+				size_t bytes_read;
+				int msgsize = 0;
+				char buffer[BUFFER_SIZE];
+				while((bytes_read = read(tmpsock,buffer+msgsize, (sizeof(int))-msgsize)) > 0) {
+					msgsize += bytes_read;
+					if(msgsize >= (sizeof(int))) break;
+				}
+				check(bytes_read,"recv error gnid");
+				int group_nodeid = *((int *)buffer);
+				daemon_socket[group_nodeid] = tmpsock;
+			}
+		}
+		pthread_mutex_unlock(&proc_state_mutex);
+		check((daemon_client_socket = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+		int ret;
+		do {
+			ret = connect(daemon_client_socket,(struct sockaddr *)(&srvaddr),sizeof(srvaddr));
+		} while(ret != 0);
+	} else {
+		check((daemon_client_socket = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+		group_main_coordinator_addr.sin_port = htons(COORDINATOR_GROUP_PORT);
+		int ret;
+		do {
+			ret = connect(daemon_client_socket,(struct sockaddr *)(&group_main_coordinator_addr),sizeof(group_main_coordinator_addr));
+		} while(ret != 0);
+		write_to_fd(daemon_client_socket,&parep_mpi_node_group_nodeid,sizeof(int));
+		group_main_coordinator_addr.sin_port = htons(DYN_COORDINATOR_PORT);
+	}
+	
+	close(dsock);
 }
 
 void *polling_server(void *arg) {
@@ -954,16 +1118,24 @@ void *polling_server(void *arg) {
 					msgsize += bytes_read;
 					if(msgsize >= (sizeof(int))) break;
 				}
+				if(bytes_read == 0) {
+					if(parep_mpi_node_group_id != 0) {
+						close(daemon_client_socket);
+						get_group_server_from_main();
+						pfd.fd = daemon_client_socket;
+						continue;
+					}
+				}
 				if(cmd == CMD_CREATE_CKPT) {
 					int fin_reached = 0;
 					pthread_mutex_lock(&parep_mpi_finalize_reached_mutex);
 					fin_reached = parep_mpi_finalize_reached;
 					pthread_mutex_unlock(&parep_mpi_finalize_reached_mutex);
 					if(!fin_reached) {
-						if(parep_mpi_node_group_nodeid == 0) {
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 							pthread_mutex_lock(&daemon_sock_mutex);
-							for(int j = 1; j < parep_mpi_node_group_size; j++) {
-								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+							for(int j = 0; j < parep_mpi_node_group_size; j++) {
+								if(daemon_socket[j] != -1) write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 							}
 							pthread_mutex_unlock(&daemon_sock_mutex);
 						}
@@ -978,10 +1150,10 @@ void *polling_server(void *arg) {
 					if(parep_mpi_initialized == 0) {
 						parep_mpi_initialized = 1;
 						int cmd = CMD_MPI_INITIALIZED;
-						if(parep_mpi_node_group_nodeid == 0) {
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 							pthread_mutex_lock(&daemon_sock_mutex);
-							for(int j = 1; j < parep_mpi_node_group_size; j++) {
-								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+							for(int j = 0; j < parep_mpi_node_group_size; j++) {
+								if(daemon_socket[j] != -1) write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 							}
 							pthread_mutex_unlock(&daemon_sock_mutex);
 						}
@@ -1015,11 +1187,13 @@ void *polling_server(void *arg) {
 					pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
 					parep_mpi_barrier_running = 0;
 					pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
-					if(parep_mpi_node_group_nodeid == 0) {
+					if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 						pthread_mutex_lock(&daemon_sock_mutex);
-						for(int j = 1; j < parep_mpi_node_group_size; j++) {
-							write_to_fd(daemon_socket[j],&cmd,sizeof(int));
-							write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+						for(int j = 0; j < parep_mpi_node_group_size; j++) {
+							if(daemon_socket[j] != -1) {
+								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+								write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+							}
 						}
 						pthread_mutex_unlock(&daemon_sock_mutex);
 					}
@@ -1048,10 +1222,10 @@ void *polling_server(void *arg) {
 					pthread_mutex_unlock(&parep_mpi_finalize_reached_mutex);
 					if(!fin_reached) {
 						int cmd = CMD_REM_RECV;
-						if(parep_mpi_node_group_nodeid == 0) {
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 							pthread_mutex_lock(&daemon_sock_mutex);
-							for(int j = 1; j < parep_mpi_node_group_size; j++) {
-								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+							for(int j = 0; j < parep_mpi_node_group_size; j++) {
+								if(daemon_socket[j] != -1) write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 							}
 							pthread_mutex_unlock(&daemon_sock_mutex);
 						}
@@ -1117,11 +1291,13 @@ void *polling_server(void *arg) {
 									pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
 									parep_mpi_barrier_running = 0;
 									pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
-									if(parep_mpi_node_group_nodeid == 0) {
+									if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 										pthread_mutex_lock(&daemon_sock_mutex);
-										for(int j = 1; j < parep_mpi_node_group_size; j++) {
-											write_to_fd(daemon_socket[j],&tempcmd,sizeof(int));
-											write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+										for(int j = 0; j < parep_mpi_node_group_size; j++) {
+											if(daemon_socket[j] != -1) {
+												write_to_fd(daemon_socket[j],&tempcmd,sizeof(int));
+												write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+											}
 										}
 										pthread_mutex_unlock(&daemon_sock_mutex);
 									}
@@ -1146,12 +1322,14 @@ void *polling_server(void *arg) {
 							}
 						}
 						int cmd = CMD_INFORM_PREDICT;
-						if(parep_mpi_node_group_nodeid == 0) {
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 							pthread_mutex_lock(&daemon_sock_mutex);
-							for(int j = 1; j < parep_mpi_node_group_size; j++) {
-								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
-								write_to_fd(daemon_socket[j],&targrank,sizeof(int));
-								write_to_fd(daemon_socket[j],&timestamp,sizeof(time_t));
+							for(int j = 0; j < parep_mpi_node_group_size; j++) {
+								if(daemon_socket[j] != -1) {
+									write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+									write_to_fd(daemon_socket[j],&targrank,sizeof(int));
+									write_to_fd(daemon_socket[j],&timestamp,sizeof(time_t));
+								}
 							}
 							pthread_mutex_unlock(&daemon_sock_mutex);
 						}
@@ -1224,6 +1402,128 @@ void *polling_server(void *arg) {
 						pthread_mutex_unlock(&client_sock_mutex);
 						pthread_mutex_unlock(&proc_state_mutex);
 					}*/
+				} else if(cmd == CMD_INFORM_PREDICT_NODE) {
+					int size;
+					int *ranks;
+					time_t timestamp;
+					msgsize = 0;
+					while((bytes_read = read(pfd.fd,(&size)+msgsize, sizeof(int)-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (sizeof(int))) break;
+					}
+					ranks = (int *)malloc(sizeof(int)*size);
+					msgsize = 0;
+					while((bytes_read = read(pfd.fd,((char *)ranks)+msgsize, (size*sizeof(int))-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (size*sizeof(int))) break;
+					}
+					msgsize = 0;
+					while((bytes_read = read(pfd.fd,(&timestamp)+msgsize, sizeof(time_t)-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (sizeof(time_t))) break;
+					}
+
+					int exit_recvd;
+					int local_term;
+					pthread_mutex_lock(&exit_cmd_recvd_mutex);
+					exit_recvd = exit_cmd_recvd;
+					pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+					pthread_mutex_lock(&local_procs_term_mutex);
+					local_term = local_procs_term;
+					pthread_mutex_unlock(&local_procs_term_mutex);
+					if((exit_recvd == 0) && (local_term == 0)) {
+						pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+						if(parep_mpi_performing_barrier == 1) {
+							pollret = poll(&pfd,nfds,-1);
+							if (pfd.revents != 0) {
+								if(pfd.revents & POLLIN) {
+									int tempcmd;
+									int tempmsgsize = 0;
+									size_t temp_bytes_read;
+									while((temp_bytes_read = read(pfd.fd,(&tempcmd)+tempmsgsize, sizeof(int)-tempmsgsize)) > 0) {
+										tempmsgsize += temp_bytes_read;
+										if(tempmsgsize >= (sizeof(int))) break;
+									}
+									assert(tempcmd == CMD_BARRIER);
+									int fail_ready;
+									tempmsgsize = 0;
+									while((temp_bytes_read = read(pfd.fd,(&fail_ready)+tempmsgsize, sizeof(int)-tempmsgsize)) > 0) {
+										tempmsgsize += temp_bytes_read;
+										if(tempmsgsize >= (sizeof(int))) break;
+									}
+									tempcmd = CMD_BARRIER;
+									assert(parep_mpi_performing_barrier == 1);
+									parep_mpi_performing_barrier = 0;
+									pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
+									parep_mpi_barrier_running = 0;
+									pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
+									if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
+										pthread_mutex_lock(&daemon_sock_mutex);
+										for(int j = 0; j < parep_mpi_node_group_size; j++) {
+											if(daemon_socket[j] != -1) {
+												write_to_fd(daemon_socket[j],&tempcmd,sizeof(int));
+												write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+											}
+										}
+										pthread_mutex_unlock(&daemon_sock_mutex);
+									}
+									pthread_mutex_lock(&proc_state_mutex);
+									pthread_mutex_lock(&client_sock_mutex);
+									for(int j = 0; j < parep_mpi_node_size; j++) {
+										if(isMainServer) {
+											if(global_proc_state[j] != PROC_TERMINATED) {
+												write_to_fd(client_socket[j],&tempcmd,sizeof(int));
+												write_to_fd(client_socket[j],&fail_ready,sizeof(int));
+											}
+										} else {
+											if(local_proc_state[j] != PROC_TERMINATED) {
+												write_to_fd(client_socket[j],&tempcmd,sizeof(int));
+												write_to_fd(client_socket[j],&fail_ready,sizeof(int));
+											}
+										}
+									}
+									pthread_mutex_unlock(&client_sock_mutex);
+									pthread_mutex_unlock(&proc_state_mutex);
+								}
+							}
+						}
+						int cmd = CMD_INFORM_PREDICT_NODE;
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
+							pthread_mutex_lock(&daemon_sock_mutex);
+							for(int j = 0; j < parep_mpi_node_group_size; j++) {
+								if(daemon_socket[j] != -1) {
+									write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+									write_to_fd(daemon_socket[j],&size,sizeof(int));
+									write_to_fd(daemon_socket[j],ranks,sizeof(int)*size);
+									write_to_fd(daemon_socket[j],&timestamp,sizeof(time_t));
+								}
+							}
+							pthread_mutex_unlock(&daemon_sock_mutex);
+						}
+						pthread_mutex_lock(&proc_state_mutex);
+						pthread_mutex_lock(&client_sock_mutex);
+						for(int j = 0; j < parep_mpi_node_size; j++) {
+							if(isMainServer) {
+								if(global_proc_state[j] != PROC_TERMINATED) {
+									write_to_fd(client_socket[j],&cmd,sizeof(int));
+									write_to_fd(client_socket[j],&size,sizeof(int));
+									write_to_fd(client_socket[j],ranks,sizeof(int)*size);
+									write_to_fd(client_socket[j],&timestamp,sizeof(time_t));
+								}
+							} else {
+								if(local_proc_state[j] != PROC_TERMINATED) {
+									write_to_fd(client_socket[j],&cmd,sizeof(int));
+									write_to_fd(client_socket[j],&size,sizeof(int));
+									write_to_fd(client_socket[j],ranks,sizeof(int)*size);
+									write_to_fd(client_socket[j],&timestamp,sizeof(time_t));
+								}
+							}
+						}
+						pthread_mutex_unlock(&client_sock_mutex);
+						pthread_mutex_unlock(&proc_state_mutex);
+						pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+					}
+					free(ranks);
 				} else if(cmd == CMD_INFORM_PROC_FAILED) {
 					int num_failed_procs;
 					msgsize = 0;
@@ -1272,11 +1572,13 @@ void *polling_server(void *arg) {
 									pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
 									parep_mpi_barrier_running = 0;
 									pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
-									if(parep_mpi_node_group_nodeid == 0) {
+									if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 										pthread_mutex_lock(&daemon_sock_mutex);
-										for(int j = 1; j < parep_mpi_node_group_size; j++) {
-											write_to_fd(daemon_socket[j],&tempcmd,sizeof(int));
-											write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+										for(int j = 0; j < parep_mpi_node_group_size; j++) {
+											if(daemon_socket[j] != -1) {
+												write_to_fd(daemon_socket[j],&tempcmd,sizeof(int));
+												write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
+											}
 										}
 										pthread_mutex_unlock(&daemon_sock_mutex);
 									}
@@ -1300,12 +1602,14 @@ void *polling_server(void *arg) {
 								}
 							}
 						}
-						if(parep_mpi_node_group_nodeid == 0) {
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 							pthread_mutex_lock(&daemon_sock_mutex);
-							for(int j = 1; j < parep_mpi_node_group_size; j++) {
-								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
-								write_to_fd(daemon_socket[j],&num_failed_procs,sizeof(int));
-								write_to_fd(daemon_socket[j],failed_ranks, sizeof(int) * num_failed_procs);
+							for(int j = 0; j < parep_mpi_node_group_size; j++) {
+								if(daemon_socket[j] != -1) {
+									write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+									write_to_fd(daemon_socket[j],&num_failed_procs,sizeof(int));
+									write_to_fd(daemon_socket[j],failed_ranks, sizeof(int) * num_failed_procs);
+								}
 							}
 							pthread_mutex_unlock(&daemon_sock_mutex);
 						}
@@ -1334,6 +1638,66 @@ void *polling_server(void *arg) {
 					}
 					
 					free(failed_ranks);
+				} else if(cmd == CMD_CHECK_NODE_FAIL) {
+					assert(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid);
+					int num_nodes_failed = 0;
+					int *failed_node_group_nodeids = (int *)malloc(sizeof(int)*parep_mpi_node_group_size);
+					for(int j = 0; j < parep_mpi_node_group_size; j++) {
+						failed_node_group_nodeids[j] = -1;
+					}
+					pthread_mutex_lock(&proc_state_mutex);
+					pthread_mutex_lock(&daemon_sock_mutex);
+					int index = 0;
+					for(int j = 0; j < parep_mpi_node_group_size; j++) {
+						if((group_daemon_state[j] != PROC_TERMINATED)) {
+							struct pollfd pfd;
+							pfd.fd = daemon_socket[j];
+							pfd.events = POLLIN;
+							int pollret = poll(&pfd,1,0);
+							if(pollret > 0) {
+								bool failcase = false;
+								if(pfd.revents & POLLIN) {
+									int temp;
+									size_t bytes_read;
+									bytes_read = read(pfd.fd, &temp, sizeof(int));
+									if(bytes_read <= 0) failcase = true;
+								}
+								if((pfd.revents & POLLHUP) || (pfd.revents & POLLERR) || failcase) {
+									close(pfd.fd);
+									daemon_socket[j] = -1;
+									group_daemon_state[j] = PROC_TERMINATED;
+									pthread_cond_signal(&proc_state_cond);
+									num_nodes_failed++;
+									failed_node_group_nodeids[index] = j;
+									parep_mpi_num_failed += parep_mpi_node_sizes[j];
+									index++;
+								}
+							}
+						}
+					}
+					pthread_mutex_unlock(&daemon_sock_mutex);
+					pthread_mutex_unlock(&proc_state_mutex);
+					int dsock;
+					check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+					int cmd = CMD_CHECK_NODE_FAIL;
+					int ret;
+					do {
+						ret = connect(dsock,(struct sockaddr *)(&(main_coordinator_addr)),sizeof(main_coordinator_addr));
+					} while(ret != 0);
+					write_to_fd(dsock,&cmd,sizeof(int));
+					write_to_fd(dsock,&num_nodes_failed,sizeof(int));
+					if(num_nodes_failed > 0) {
+						write_to_fd(dsock,&parep_mpi_node_group_id,sizeof(int));
+						write_to_fd(dsock,(void *)failed_node_group_nodeids,sizeof(int)*num_nodes_failed);
+					}
+					close(dsock);
+					free(failed_node_group_nodeids);
+				}
+			} else if((pfd.revents & POLLHUP) || (pfd.revents & POLLERR)) {
+				if(parep_mpi_node_group_id != 0) {
+					close(daemon_client_socket);
+					get_group_server_from_main();
+					pfd.fd = daemon_client_socket;
 				}
 			}
 		}
@@ -1355,46 +1719,150 @@ void *thread_function(void *arg) {
 	}
 }
 
+int check_node_failed(int infinite_timeout) {
+	int num_nodes_failed = 0;
+	pthread_mutex_lock(&proc_state_mutex);
+	while(parep_mpi_reconf_ngroup) {
+		pthread_cond_wait(&proc_state_cond,&proc_state_mutex);
+	}
+	pthread_mutex_lock(&daemon_sock_mutex);
+	for(int j = 0; j < parep_mpi_node_num; j++) {
+		if((daemon_state[j] != PROC_TERMINATED)) {
+			if((parep_mpi_node_group_ids[j] == 0)) {
+				struct pollfd pfd;
+				pfd.fd = daemon_socket[j];
+				pfd.events = POLLIN;
+				int pollret = poll(&pfd,1,0);
+				if(pollret > 0) {
+					bool failcase = false;
+					if(pfd.revents & POLLIN) {
+						int temp;
+						size_t bytes_read;
+						bytes_read = read(pfd.fd, &temp, sizeof(int));
+						if(bytes_read <= 0) failcase = true;
+					}
+					if((pfd.revents & POLLHUP) || (pfd.revents & POLLERR) || failcase) {
+						daemon_state[j] = PROC_TERMINATED;
+						pthread_cond_signal(&proc_state_cond);
+						num_nodes_failed++;
+					}
+				}
+			} else if((parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j])) {
+				struct pollfd pfd;
+				pfd.fd = daemon_socket[j];
+				pfd.events = POLLIN;
+				int pollret = poll(&pfd,1,0);
+				if(pollret > 0) {
+					bool failcase = false;
+					if(pfd.revents & POLLIN) {
+						int temp;
+						size_t bytes_read;
+						bytes_read = read(pfd.fd, &temp, sizeof(int));
+						if(bytes_read <= 0) failcase = true;
+					}
+					if((pfd.revents & POLLHUP) || (pfd.revents & POLLERR) || failcase) {
+						pthread_mutex_unlock(&daemon_sock_mutex);
+						while(daemon_state[j] != PROC_TERMINATED) {
+							waiting_for_node_fail_detect = true;
+							pthread_cond_wait(&proc_state_cond,&proc_state_mutex);
+							waiting_for_node_fail_detect = false;
+						}
+						pthread_mutex_lock(&daemon_sock_mutex);
+						pthread_cond_signal(&proc_state_cond);
+						num_nodes_failed++;
+					}
+				} else if(pollret == 0) {
+					int cmd = CMD_CHECK_NODE_FAIL;
+					write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+				}
+			}
+		}
+	}
+	pthread_mutex_unlock(&daemon_sock_mutex);
+	pthread_mutex_unlock(&proc_state_mutex);
+	parep_mpi_node_group_checked += 1;
+	pthread_mutex_lock(&parep_mpi_node_group_checked_mutex);
+	while(parep_mpi_node_group_checked < parep_mpi_node_group_num) {
+		pthread_cond_wait(&parep_mpi_node_group_checked_cond,&parep_mpi_node_group_checked_mutex);
+	}
+	parep_mpi_node_group_checked = 0;
+	num_nodes_failed += parep_mpi_num_nodes_failed;
+	parep_mpi_num_nodes_failed = 0;
+	pthread_mutex_unlock(&parep_mpi_node_group_checked_mutex);
+	return num_nodes_failed;
+}
+
 void *empi_thread_function(void *arg) {
 	int addr_size;
 	struct sockaddr_un empi_server_addr,empi_client_addr;
 	int option = 1;
 	
-	check((empi_socket = socket(AF_UNIX,SOCK_STREAM,0)),"Failed to create socket");
-	setsockopt(empi_socket,SOL_SOCKET,SO_REUSEADDR,&option,sizeof(option));
+	if(pthread_self() == empi_thread) {
+		check((empi_socket = socket(AF_UNIX,SOCK_STREAM,0)),"Failed to create socket");
+		setsockopt(empi_socket,SOL_SOCKET,SO_REUSEADDR,&option,sizeof(option));
+	} else if(pthread_self() == empi_exec_thread) {
+		check((empi_exec_socket = socket(AF_UNIX,SOCK_STREAM,0)),"Failed to create socket");
+		setsockopt(empi_exec_socket,SOL_SOCKET,SO_REUSEADDR,&option,sizeof(option));
+	}
 	
 	memset(&empi_server_addr,0,sizeof(empi_server_addr));
 	empi_server_addr.sun_family = AF_UNIX;
-	strcpy(empi_server_addr.sun_path,"#EMPIServer");
+	if(pthread_self() == empi_thread) strcpy(empi_server_addr.sun_path,"#EMPIServer");
+	else if(pthread_self() == empi_exec_thread) strcpy(empi_server_addr.sun_path,"#EMPIServermpiexec");
 	empi_server_addr.sun_path[0] = 0;
-		
-	check(bind(empi_socket,(SA *)&empi_server_addr,sizeof(empi_server_addr)),"Bind Failed!");
-	check(listen(empi_socket, 1),"Listen Failed!");
 	
-	empi_client_socket = accept(empi_socket, (SA *)&empi_client_addr, (socklen_t *)&addr_size);
-	if((empi_client_socket == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
-		while((empi_client_socket == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
-			rlim_nofile.rlim_cur *= 2;
-			assert(rlim_nofile.rlim_cur <= rlim_nofile.rlim_max);
-			setrlimit(RLIMIT_NOFILE,&rlim_nofile);
-			empi_client_socket = accept(empi_socket, (SA *)&empi_client_addr, (socklen_t *)&addr_size);
-		}
-		check(empi_client_socket,"accept failed");
-	} else check(empi_client_socket,"accept failed");
+	if(pthread_self() == empi_thread) {
+		check(bind(empi_socket,(SA *)&empi_server_addr,sizeof(empi_server_addr)),"Bind Failed!");
+		check(listen(empi_socket, 1),"Listen Failed!");
+		empi_client_socket = accept(empi_socket, (SA *)&empi_client_addr, (socklen_t *)&addr_size);
+		if((empi_client_socket == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+			while((empi_client_socket == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+				rlim_nofile.rlim_cur *= 2;
+				assert(rlim_nofile.rlim_cur <= rlim_nofile.rlim_max);
+				setrlimit(RLIMIT_NOFILE,&rlim_nofile);
+				empi_client_socket = accept(empi_socket, (SA *)&empi_client_addr, (socklen_t *)&addr_size);
+			}
+			check(empi_client_socket,"accept failed");
+		} else check(empi_client_socket,"accept failed");
 	
-	{
-		size_t bytes_read;
-		int msgsize = 0;
-		while((bytes_read = read(empi_client_socket,(&parep_mpi_empi_pid)+msgsize, sizeof(pid_t)-msgsize)) > 0) {
-			msgsize += bytes_read;
-			if(msgsize >= (sizeof(pid_t))) break;
+		{
+			size_t bytes_read;
+			int msgsize = 0;
+			while((bytes_read = read(empi_client_socket,(&parep_mpi_empi_pid)+msgsize, sizeof(pid_t)-msgsize)) > 0) {
+				msgsize += bytes_read;
+				if(msgsize >= (sizeof(pid_t))) break;
+			}
+			check(bytes_read,"recv error empi pid");
 		}
-		check(bytes_read,"recv error empi pid");
+	} else if(pthread_self() == empi_exec_thread) {
+		check(bind(empi_exec_socket,(SA *)&empi_server_addr,sizeof(empi_server_addr)),"Bind Failed!");
+		check(listen(empi_exec_socket, 1),"Listen Failed!");
+		empi_exec_client_socket = accept(empi_exec_socket, (SA *)&empi_client_addr, (socklen_t *)&addr_size);
+		if((empi_exec_client_socket == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+			while((empi_exec_client_socket == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+				rlim_nofile.rlim_cur *= 2;
+				assert(rlim_nofile.rlim_cur <= rlim_nofile.rlim_max);
+				setrlimit(RLIMIT_NOFILE,&rlim_nofile);
+				empi_exec_client_socket = accept(empi_exec_socket, (SA *)&empi_client_addr, (socklen_t *)&addr_size);
+			}
+			check(empi_exec_client_socket,"accept failed");
+		} else check(empi_exec_client_socket,"accept failed");
+	
+		{
+			size_t bytes_read;
+			int msgsize = 0;
+			while((bytes_read = read(empi_exec_client_socket,(&parep_mpi_empi_exec_pid)+msgsize, sizeof(pid_t)-msgsize)) > 0) {
+				msgsize += bytes_read;
+				if(msgsize >= (sizeof(pid_t))) break;
+			}
+			check(bytes_read,"recv error empi pid");
+		}
 	}
 	
 	nfds_t nfds;
 	struct pollfd pfd;
-	pfd.fd = empi_client_socket;
+	if(pthread_self() == empi_thread) pfd.fd = empi_client_socket;
+	else if(pthread_self() == empi_exec_thread) pfd.fd = empi_exec_client_socket;
 	pfd.events = POLLIN;
 	nfds = 1;
 	int pollret;
@@ -1414,230 +1882,275 @@ void *empi_thread_function(void *arg) {
 				char buffer[BUFFER_SIZE];
 				
 				msgsize = 0;
-				while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
-					msgsize += bytes_read;
-					if(msgsize >= (sizeof(int))) break;
+				if(pthread_self() == empi_thread) {
+					while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (sizeof(int))) break;
+					}
+					check(bytes_read,"recv error empi wnohang");
+				} else if(pthread_self() == empi_exec_thread) {
+					while((bytes_read = read(empi_exec_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (sizeof(int))) break;
+					}
+					check(bytes_read,"recv error empi wnohang");
 				}
-				check(bytes_read,"recv error empi wnohang");
 				int cmd = *((int *)buffer);
 				if(cmd == CMD_MISC_PROC_FAILED) {
+					int infinite_timeout;
 					msgsize = 0;
-					while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
-						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int))) break;
+					if(pthread_self() == empi_thread) {
+						while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi infinite_timeout");
+						infinite_timeout = *((int *)buffer);
+						
+						msgsize = 0;
+						while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi num active fds");
+					} else if(pthread_self() == empi_exec_thread) {
+						while((bytes_read = read(empi_exec_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi infinite_timeout");
+						infinite_timeout = *((int *)buffer);
+						
+						msgsize = 0;
+						while((bytes_read = read(empi_exec_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi num active fds");
 					}
-					check(bytes_read,"recv error empi infinite_timeout");
-					int infinite_timeout = *((int *)buffer);
-					
-					msgsize = 0;
-					while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
-						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int))) break;
-					}
-					check(bytes_read,"recv error empi num active fds");
 					int num_active_fds = *((int *)buffer);
 					
-					struct pollfd *pfds;
-					nfds_t nfds = parep_mpi_node_size;
-					pfds = (struct pollfd *)malloc(nfds * sizeof(struct pollfd));
-					pthread_mutex_lock(&proc_state_mutex);
-					int num_failed = 0;
-					int *proc_failed = (int *)malloc(sizeof(int) * parep_mpi_node_size);
-					int lterm = 0;
-					pthread_mutex_lock(&local_procs_term_mutex);
-					lterm = local_procs_term;
-					pthread_mutex_unlock(&local_procs_term_mutex);
-					do {
-						if(lterm == 1) break;
-						num_failed = 0;
-						for(int j = 0; j < parep_mpi_node_size; j++) {
-							if(isMainServer) {
-								if(global_proc_state[j] != PROC_TERMINATED) pfds[j].fd = client_socket[j];
-								else pfds[j].fd = -1;
-							} else {
-								if(local_proc_state[j] != PROC_TERMINATED) pfds[j].fd = client_socket[j];
-								else pfds[j].fd = -1;
+					int num_nodes_failed = 0;
+					if(isMainServer) {
+						num_nodes_failed = check_node_failed(infinite_timeout);
+					}
+					
+					if(num_nodes_failed > 0) {
+						int num_failed = 0;
+						int *proc_failed = (int *)malloc(sizeof(int) * parep_mpi_size);
+						for(int j = 0; j < parep_mpi_size; j++) proc_failed[j] = 0;
+						pthread_mutex_lock(&proc_state_mutex);
+						int rank_offset = 0;
+						for(int i = 0; i < parep_mpi_node_num; i++) {
+							if(daemon_state[i] == PROC_TERMINATED) {
+								int start_rank = rank_offset;
+								for(int j = start_rank; j < start_rank+parep_mpi_node_sizes[i]; j++) {
+									if(global_proc_state[j] != PROC_TERMINATED) {
+										global_proc_state[j] = PROC_TERMINATED;
+										num_failed++;
+										proc_failed[j] = 1;
+										pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+										parep_mpi_num_failed++;
+										pthread_cond_signal(&parep_mpi_barrier_count_cond);
+										pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+									}
+								}
 							}
-							pfds[j].events = POLLIN;
+							rank_offset += parep_mpi_node_sizes[i];
 						}
-						for(int j = 0; j < parep_mpi_node_size; j++) proc_failed[j] = 0;
-						while(num_failed == 0) {
-							pthread_mutex_lock(&local_procs_term_mutex);
-							lterm = local_procs_term;
-							pthread_mutex_unlock(&local_procs_term_mutex);
-							if(lterm == 1) break;
-							int pollret = 0;
+						
+						int exit_recvd;
+						int local_term;
+						pthread_mutex_lock(&exit_cmd_recvd_mutex);
+						exit_recvd = exit_cmd_recvd;
+						pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+						pthread_mutex_lock(&local_procs_term_mutex);
+						local_term = local_procs_term;
+						pthread_mutex_unlock(&local_procs_term_mutex);
+						if((exit_recvd == 0) && (local_term == 0)) {
+							char *proc_state_data_buf = (char *)malloc(sizeof(int) * num_failed);
+							size_t offset = 0;
+							for(int i = 0; i < parep_mpi_size; i++) {
+								if(proc_failed[i]) {
+									char *proc_state_data = proc_state_data_buf + offset;
+									*((int *)proc_state_data) = parep_mpi_all_ranks[i];
+									offset += sizeof(int);
+								}
+							}
+							int cmd = CMD_INFORM_PROC_FAILED;
+							pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
+							parep_mpi_fail_ready = 1;
+							pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
 							pthread_cond_signal(&proc_state_cond);
 							pthread_mutex_unlock(&proc_state_mutex);
-							while(pollret <= 0) {
-								pollret = poll(pfds,nfds,-1);
+							pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+							pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
+							while(parep_mpi_barrier_running == 1) {
+								pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+								pthread_cond_wait(&parep_mpi_barrier_running_cond,&parep_mpi_barrier_running_mutex);
+								if(parep_mpi_barrier_running == 0) pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
 							}
+							pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
 							pthread_mutex_lock(&proc_state_mutex);
-							
+							pthread_mutex_lock(&daemon_sock_mutex);
+							for(int j = 1; j < parep_mpi_node_num; j++) {
+								if((daemon_state[j] != PROC_TERMINATED) && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
+									write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+									write_to_fd(daemon_socket[j],&num_failed,sizeof(int));
+									write_to_fd(daemon_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
+								}
+							}
+							pthread_mutex_unlock(&daemon_sock_mutex);
+							pthread_mutex_lock(&client_sock_mutex);
 							for(int j = 0; j < parep_mpi_node_size; j++) {
-								if(pfds[j].revents != 0) {
-									if((pfds[j].revents & POLLHUP) || (pfds[j].revents & POLLERR)) {
-										if(isMainServer) {
-											if(global_proc_state[j] != PROC_TERMINATED) {
-												global_proc_state[j] = PROC_TERMINATED;
-												num_failed++;
-												proc_failed[j] = 1;
-												pthread_mutex_lock(&parep_mpi_num_failed_mutex);
-												parep_mpi_num_failed++;
-												pthread_cond_signal(&parep_mpi_barrier_count_cond);
-												pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+								if(global_proc_state[j] != PROC_TERMINATED) {
+									write_to_fd(client_socket[j],&cmd,sizeof(int));
+									write_to_fd(client_socket[j],&num_failed,sizeof(int));
+									write_to_fd(client_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
+								}
+							}
+							pthread_mutex_unlock(&client_sock_mutex);
+							int *fprocs = (int *)proc_state_data_buf;
+							for(int j = 0; j < num_failed; j++) {
+								if(!parep_mpi_inform_failed_check[fprocs[j]]) {
+									parep_mpi_inform_failed_check[fprocs[j]] = true;
+									parep_mpi_num_inform_failed++;
+									int nodeid = fprocs[j] / parep_mpi_node_size;
+									int nodegroupid = parep_mpi_node_group_ids[nodeid];
+									parep_mpi_num_inform_failed_node[nodeid]++;
+									parep_mpi_num_inform_failed_node_group[nodegroupid]++;
+								}
+							}
+							pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
+							parep_mpi_fail_ready = 0;
+							pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
+							pthread_mutex_unlock(&proc_state_mutex);
+							pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+							pthread_mutex_lock(&proc_state_mutex);
+							free(proc_state_data_buf);
+						}
+						
+						pthread_cond_signal(&proc_state_cond);
+						pthread_mutex_unlock(&proc_state_mutex);
+						free(proc_failed);
+					} else {
+						struct pollfd *pfds;
+						nfds_t nfds = parep_mpi_node_size;
+						pfds = (struct pollfd *)malloc(nfds * sizeof(struct pollfd));
+						pthread_mutex_lock(&proc_state_mutex);
+						int num_failed = 0;
+						int *proc_failed = (int *)malloc(sizeof(int) * parep_mpi_node_size);
+						int lterm = 0;
+						pthread_mutex_lock(&local_procs_term_mutex);
+						lterm = local_procs_term;
+						pthread_mutex_unlock(&local_procs_term_mutex);
+						do {
+							if(lterm == 1) break;
+							num_failed = 0;
+							for(int j = 0; j < parep_mpi_node_size; j++) {
+								if(isMainServer) {
+									if(global_proc_state[j] != PROC_TERMINATED) pfds[j].fd = client_socket[j];
+									else pfds[j].fd = -1;
+								} else {
+									if(local_proc_state[j] != PROC_TERMINATED) pfds[j].fd = client_socket[j];
+									else pfds[j].fd = -1;
+								}
+								pfds[j].events = POLLIN;
+							}
+							for(int j = 0; j < parep_mpi_node_size; j++) proc_failed[j] = 0;
+							while(num_failed == 0) {
+								pthread_mutex_lock(&local_procs_term_mutex);
+								lterm = local_procs_term;
+								pthread_mutex_unlock(&local_procs_term_mutex);
+								if(lterm == 1) break;
+								int pollret = 0;
+								pthread_cond_signal(&proc_state_cond);
+								pthread_mutex_unlock(&proc_state_mutex);
+								while(pollret <= 0) {
+									pollret = poll(pfds,nfds,-1);
+								}
+								pthread_mutex_lock(&proc_state_mutex);
+								
+								for(int j = 0; j < parep_mpi_node_size; j++) {
+									if(pfds[j].revents != 0) {
+										if((pfds[j].revents & POLLHUP) || (pfds[j].revents & POLLERR)) {
+											if(isMainServer) {
+												if(global_proc_state[j] != PROC_TERMINATED) {
+													global_proc_state[j] = PROC_TERMINATED;
+													num_failed++;
+													proc_failed[j] = 1;
+													pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+													parep_mpi_num_failed++;
+													pthread_cond_signal(&parep_mpi_barrier_count_cond);
+													pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+												}
+											} else {
+												if(local_proc_state[j] != PROC_TERMINATED) {
+													local_proc_state[j] = PROC_TERMINATED;
+													num_failed++;
+													proc_failed[j] = 1;
+													pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+													parep_mpi_num_failed++;
+													pthread_cond_signal(&parep_mpi_barrier_count_cond);
+													pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+												}
 											}
-										} else {
-											if(local_proc_state[j] != PROC_TERMINATED) {
-												local_proc_state[j] = PROC_TERMINATED;
-												num_failed++;
-												proc_failed[j] = 1;
-												pthread_mutex_lock(&parep_mpi_num_failed_mutex);
-												parep_mpi_num_failed++;
-												pthread_cond_signal(&parep_mpi_barrier_count_cond);
-												pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
-											}
-										}
-									} else if(pfds[j].revents & POLLIN) {
-										bytes_read = recv(pfds[j].fd,buffer,sizeof(buffer),0);
-										assert(bytes_read <= 0);
-										if(isMainServer) {
-											if(global_proc_state[j] != PROC_TERMINATED) {
-												global_proc_state[j] = PROC_TERMINATED;
-												num_failed++;
-												proc_failed[j] = 1;
-												pthread_mutex_lock(&parep_mpi_num_failed_mutex);
-												parep_mpi_num_failed++;
-												pthread_cond_signal(&parep_mpi_barrier_count_cond);
-												pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
-											}
-										} else {
-											if(local_proc_state[j] != PROC_TERMINATED) {
-												local_proc_state[j] = PROC_TERMINATED;
-												num_failed++;
-												proc_failed[j] = 1;
-												pthread_mutex_lock(&parep_mpi_num_failed_mutex);
-												parep_mpi_num_failed++;
-												pthread_cond_signal(&parep_mpi_barrier_count_cond);
-												pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+										} else if(pfds[j].revents & POLLIN) {
+											bytes_read = recv(pfds[j].fd,buffer,sizeof(buffer),0);
+											assert(bytes_read <= 0);
+											if(isMainServer) {
+												if(global_proc_state[j] != PROC_TERMINATED) {
+													global_proc_state[j] = PROC_TERMINATED;
+													num_failed++;
+													proc_failed[j] = 1;
+													pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+													parep_mpi_num_failed++;
+													pthread_cond_signal(&parep_mpi_barrier_count_cond);
+													pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+												}
+											} else {
+												if(local_proc_state[j] != PROC_TERMINATED) {
+													local_proc_state[j] = PROC_TERMINATED;
+													num_failed++;
+													proc_failed[j] = 1;
+													pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+													parep_mpi_num_failed++;
+													pthread_cond_signal(&parep_mpi_barrier_count_cond);
+													pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+												}
 											}
 										}
 									}
 								}
 							}
-						}
-						
-						if((!isMainServer) && (num_failed > 0)) {
-							int dsock;
-							check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
-							int ret;
-							do {
-								ret = connect(dsock,(struct sockaddr *)(&(main_coordinator_addr)),sizeof(main_coordinator_addr));
-							} while(ret != 0);
-							int cmd = CMD_PROC_STATE_UPDATE;
-							write_to_fd(dsock,&cmd,sizeof(int));
-							write_to_fd(dsock,&num_failed,sizeof(int));
 							
-							char *proc_state_data_buf = (char *)malloc(((2*sizeof(int))+sizeof(pid_t)) * num_failed);
-							size_t offset = 0;
-							int local_terminated = 1;
-							for(int i = 0; i < parep_mpi_node_size; i++) {
-								if(proc_failed[i]) {
-									char *proc_state_data = proc_state_data_buf + offset;
-									*((int *)proc_state_data) = parep_mpi_ranks[i];
-									*((int *)(proc_state_data+sizeof(int))) = local_proc_state[i];
-									*((pid_t *)(proc_state_data+(2*sizeof(int)))) = parep_mpi_pids[i];
-									offset += (2*sizeof(int))+sizeof(pid_t);
-								}
-								if(local_proc_state[i] != PROC_TERMINATED) {
-									local_terminated = 0;
-								}
-							}
-							write_to_fd(dsock,proc_state_data_buf,(((2*sizeof(int))+sizeof(pid_t)) * num_failed));
-							free(proc_state_data_buf);
-							if(local_terminated) {
-								pthread_mutex_lock(&local_procs_term_mutex);
-								local_procs_term = local_terminated;
-								pthread_cond_signal(&local_procs_term_cond);
-								pthread_mutex_unlock(&local_procs_term_mutex);
-								lterm = 1;
-							}
-							close(dsock);
-						}
-						
-						if((isMainServer) && (num_failed > 0)) {
-							int exit_recvd;
-							int local_term;
-							pthread_mutex_lock(&exit_cmd_recvd_mutex);
-							exit_recvd = exit_cmd_recvd;
-							pthread_mutex_unlock(&exit_cmd_recvd_mutex);
-							pthread_mutex_lock(&local_procs_term_mutex);
-							local_term = local_procs_term;
-							pthread_mutex_unlock(&local_procs_term_mutex);
-							if((exit_recvd == 0) && (local_term == 0)) {
-								int local_terminated = 1;
-								char *proc_state_data_buf = (char *)malloc(sizeof(int) * num_failed);
+							if((!isMainServer) && (num_failed > 0)) {
+								int dsock;
+								check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+								int ret;
+								do {
+									ret = connect(dsock,(struct sockaddr *)(&(main_coordinator_addr)),sizeof(main_coordinator_addr));
+								} while(ret != 0);
+								int cmd = CMD_PROC_STATE_UPDATE;
+								write_to_fd(dsock,&cmd,sizeof(int));
+								write_to_fd(dsock,&num_failed,sizeof(int));
+								
+								char *proc_state_data_buf = (char *)malloc(((2*sizeof(int))+sizeof(pid_t)) * num_failed);
 								size_t offset = 0;
+								int local_terminated = 1;
 								for(int i = 0; i < parep_mpi_node_size; i++) {
 									if(proc_failed[i]) {
 										char *proc_state_data = proc_state_data_buf + offset;
 										*((int *)proc_state_data) = parep_mpi_ranks[i];
-										offset += sizeof(int);
+										*((int *)(proc_state_data+sizeof(int))) = local_proc_state[i];
+										*((pid_t *)(proc_state_data+(2*sizeof(int)))) = parep_mpi_pids[i];
+										offset += (2*sizeof(int))+sizeof(pid_t);
 									}
-									if(global_proc_state[i] != PROC_TERMINATED) {
+									if(local_proc_state[i] != PROC_TERMINATED) {
 										local_terminated = 0;
 									}
 								}
-								int cmd = CMD_INFORM_PROC_FAILED;
-								pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
-								parep_mpi_fail_ready = 1;
-								pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
-								pthread_cond_signal(&proc_state_cond);
-								pthread_mutex_unlock(&proc_state_mutex);
-								pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
-								pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
-								while(parep_mpi_barrier_running == 1) {
-									pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
-									pthread_cond_wait(&parep_mpi_barrier_running_cond,&parep_mpi_barrier_running_mutex);
-									if(parep_mpi_barrier_running == 0) pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
-								}
-								pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
-								pthread_mutex_lock(&proc_state_mutex);
-								pthread_mutex_lock(&daemon_sock_mutex);
-								for(int j = 1; j < parep_mpi_node_num; j++) {
-									if((daemon_state[j] != PROC_TERMINATED) && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
-										write_to_fd(daemon_socket[j],&cmd,sizeof(int));
-										write_to_fd(daemon_socket[j],&num_failed,sizeof(int));
-										write_to_fd(daemon_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
-									}
-								}
-								pthread_mutex_unlock(&daemon_sock_mutex);
-								pthread_mutex_lock(&client_sock_mutex);
-								for(int j = 0; j < parep_mpi_node_size; j++) {
-									if(global_proc_state[j] != PROC_TERMINATED) {
-										write_to_fd(client_socket[j],&cmd,sizeof(int));
-										write_to_fd(client_socket[j],&num_failed,sizeof(int));
-										write_to_fd(client_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
-									}
-								}
-								pthread_mutex_unlock(&client_sock_mutex);
-								int *fprocs = (int *)proc_state_data_buf;
-								for(int j = 0; j < num_failed; j++) {
-									if(!parep_mpi_inform_failed_check[fprocs[j]]) {
-										parep_mpi_inform_failed_check[fprocs[j]] = true;
-										parep_mpi_num_inform_failed++;
-										int nodeid = fprocs[j] / parep_mpi_node_size;
-										int nodegroupid = parep_mpi_node_group_ids[nodeid];
-										parep_mpi_num_inform_failed_node[nodeid]++;
-										parep_mpi_num_inform_failed_node_group[nodegroupid]++;
-									}
-								}
-								pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
-								parep_mpi_fail_ready = 0;
-								pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
-								pthread_mutex_unlock(&proc_state_mutex);
-								pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
-								pthread_mutex_lock(&proc_state_mutex);
+								write_to_fd(dsock,proc_state_data_buf,(((2*sizeof(int))+sizeof(pid_t)) * num_failed));
 								free(proc_state_data_buf);
 								if(local_terminated) {
 									pthread_mutex_lock(&local_procs_term_mutex);
@@ -1646,30 +2159,114 @@ void *empi_thread_function(void *arg) {
 									pthread_mutex_unlock(&local_procs_term_mutex);
 									lterm = 1;
 								}
-							} else if(local_term == 0) {
-								int local_terminated = 1;
-								for(int i = 0; i < parep_mpi_node_size; i++) {
-									if(global_proc_state[i] != PROC_TERMINATED) {
-										local_terminated = 0;
+								close(dsock);
+							}
+							
+							if((isMainServer) && (num_failed > 0)) {
+								int exit_recvd;
+								int local_term;
+								pthread_mutex_lock(&exit_cmd_recvd_mutex);
+								exit_recvd = exit_cmd_recvd;
+								pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+								pthread_mutex_lock(&local_procs_term_mutex);
+								local_term = local_procs_term;
+								pthread_mutex_unlock(&local_procs_term_mutex);
+								if((exit_recvd == 0) && (local_term == 0)) {
+									int local_terminated = 1;
+									char *proc_state_data_buf = (char *)malloc(sizeof(int) * num_failed);
+									size_t offset = 0;
+									for(int i = 0; i < parep_mpi_node_size; i++) {
+										if(proc_failed[i]) {
+											char *proc_state_data = proc_state_data_buf + offset;
+											*((int *)proc_state_data) = parep_mpi_ranks[i];
+											offset += sizeof(int);
+										}
+										if(global_proc_state[i] != PROC_TERMINATED) {
+											local_terminated = 0;
+										}
 									}
-								}
-								if(local_terminated) {
-									pthread_mutex_lock(&local_procs_term_mutex);
-									local_procs_term = local_terminated;
-									pthread_cond_signal(&local_procs_term_cond);
-									pthread_mutex_unlock(&local_procs_term_mutex);
-									lterm = 1;
-								}
-							} else lterm = 1;
-						}
-					} while((lterm == 0) && (infinite_timeout == 1) && (num_active_fds == 0));
-					
-					pthread_cond_signal(&proc_state_cond);
-					pthread_mutex_unlock(&proc_state_mutex);
-					
-					free(pfds);			
-					free(proc_failed);
-					
+									int cmd = CMD_INFORM_PROC_FAILED;
+									pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
+									parep_mpi_fail_ready = 1;
+									pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
+									pthread_cond_signal(&proc_state_cond);
+									pthread_mutex_unlock(&proc_state_mutex);
+									pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+									pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
+									while(parep_mpi_barrier_running == 1) {
+										pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+										pthread_cond_wait(&parep_mpi_barrier_running_cond,&parep_mpi_barrier_running_mutex);
+										if(parep_mpi_barrier_running == 0) pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+									}
+									pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
+									pthread_mutex_lock(&proc_state_mutex);
+									pthread_mutex_lock(&daemon_sock_mutex);
+									for(int j = 1; j < parep_mpi_node_num; j++) {
+										if((daemon_state[j] != PROC_TERMINATED) && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
+											write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+											write_to_fd(daemon_socket[j],&num_failed,sizeof(int));
+											write_to_fd(daemon_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
+										}
+									}
+									pthread_mutex_unlock(&daemon_sock_mutex);
+									pthread_mutex_lock(&client_sock_mutex);
+									for(int j = 0; j < parep_mpi_node_size; j++) {
+										if(global_proc_state[j] != PROC_TERMINATED) {
+											write_to_fd(client_socket[j],&cmd,sizeof(int));
+											write_to_fd(client_socket[j],&num_failed,sizeof(int));
+											write_to_fd(client_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
+										}
+									}
+									pthread_mutex_unlock(&client_sock_mutex);
+									int *fprocs = (int *)proc_state_data_buf;
+									for(int j = 0; j < num_failed; j++) {
+										if(!parep_mpi_inform_failed_check[fprocs[j]]) {
+											parep_mpi_inform_failed_check[fprocs[j]] = true;
+											parep_mpi_num_inform_failed++;
+											int nodeid = fprocs[j] / parep_mpi_node_size;
+											int nodegroupid = parep_mpi_node_group_ids[nodeid];
+											parep_mpi_num_inform_failed_node[nodeid]++;
+											parep_mpi_num_inform_failed_node_group[nodegroupid]++;
+										}
+									}
+									pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
+									parep_mpi_fail_ready = 0;
+									pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
+									pthread_mutex_unlock(&proc_state_mutex);
+									pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+									pthread_mutex_lock(&proc_state_mutex);
+									free(proc_state_data_buf);
+									if(local_terminated) {
+										pthread_mutex_lock(&local_procs_term_mutex);
+										local_procs_term = local_terminated;
+										pthread_cond_signal(&local_procs_term_cond);
+										pthread_mutex_unlock(&local_procs_term_mutex);
+										lterm = 1;
+									}
+								} else if(local_term == 0) {
+									int local_terminated = 1;
+									for(int i = 0; i < parep_mpi_node_size; i++) {
+										if(global_proc_state[i] != PROC_TERMINATED) {
+											local_terminated = 0;
+										}
+									}
+									if(local_terminated) {
+										pthread_mutex_lock(&local_procs_term_mutex);
+										local_procs_term = local_terminated;
+										pthread_cond_signal(&local_procs_term_cond);
+										pthread_mutex_unlock(&local_procs_term_mutex);
+										lterm = 1;
+									}
+								} else lterm = 1;
+							}
+						} while((lterm == 0) && (infinite_timeout == 1) && (num_active_fds == 0));
+						
+						pthread_cond_signal(&proc_state_cond);
+						pthread_mutex_unlock(&proc_state_mutex);
+						
+						free(pfds);			
+						free(proc_failed);
+					}
 					if((!infinite_timeout) || (num_active_fds > 0)) {
 					} else {
 						int empi_safe_ret = 0;
@@ -1681,32 +2278,55 @@ void *empi_thread_function(void *arg) {
 						}
 						assert(empi_safe_ret == 1);
 					}
-					
 				} else if(cmd == CMD_WAITPID_DATA) {
 					msgsize = 0;
-					while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
-						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int))) break;
+					if(pthread_self() == empi_thread) {
+						while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi wnohang");
+					} else if(pthread_self() == empi_exec_thread) {
+						while((bytes_read = read(empi_exec_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi wnohang");
 					}
-					check(bytes_read,"recv error empi wnohang");
 					int wnohang_used = *((int *)buffer);
 					
 					msgsize = 0;
-					while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
-						msgsize += bytes_read;
-						if(msgsize >= (sizeof(int))) break;
+					if(pthread_self() == empi_thread) {
+						while((bytes_read = read(empi_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi num pid");
+					} else if(pthread_self() == empi_exec_thread) {
+						while((bytes_read = read(empi_exec_client_socket,buffer+msgsize, sizeof(int)-msgsize)) > 0) {
+							msgsize += bytes_read;
+							if(msgsize >= (sizeof(int))) break;
+						}
+						check(bytes_read,"recv error empi num pid");
 					}
-					check(bytes_read,"recv error empi num pid");
 					int waitpid_num = *((int *)buffer);
 					pid_t *pid_buffer;
 					if(waitpid_num > 0) {
 						pid_buffer = (pid_t *)malloc(waitpid_num * sizeof(pid_t));
 						msgsize = 0;
-						while((bytes_read = read(empi_client_socket,pid_buffer+msgsize, (sizeof(pid_t)*waitpid_num)-msgsize)) > 0) {
-							msgsize += bytes_read;
-							if(msgsize >= (sizeof(pid_t) * waitpid_num)) break;
+						if(pthread_self() == empi_thread) {
+							while((bytes_read = read(empi_client_socket,pid_buffer+msgsize, (sizeof(pid_t)*waitpid_num)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(pid_t) * waitpid_num)) break;
+							}
+							check(bytes_read,"recv error empi pid buffer");
+						} if(pthread_self() == empi_exec_thread) {
+							while((bytes_read = read(empi_exec_client_socket,pid_buffer+msgsize, (sizeof(pid_t)*waitpid_num)-msgsize)) > 0) {
+								msgsize += bytes_read;
+								if(msgsize >= (sizeof(pid_t) * waitpid_num)) break;
+							}
+							check(bytes_read,"recv error empi pid buffer");
 						}
-						check(bytes_read,"recv error empi pid buffer");
 						handle_waitpid_output(pid_buffer,waitpid_num);
 						free(pid_buffer);
 					}
@@ -1856,7 +2476,7 @@ void handle_waitpid_output(pid_t *pid_buffer, int pid_num) {
 			pthread_mutex_lock(&proc_state_mutex);
 			pthread_mutex_lock(&daemon_sock_mutex);
 			for(int j = 1; j < parep_mpi_node_num; j++) {
-				if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+				if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 					write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 					write_to_fd(daemon_socket[j],&num_proc_update,sizeof(int));
 					write_to_fd(daemon_socket[j],proc_state_data_buf, sizeof(int) * num_proc_update);
@@ -1963,7 +2583,7 @@ void perform_propagate(void *buffer, size_t size) {
 	if(isMainServer) {
 		int dsock;
 		for(int i = 1; i < parep_mpi_node_num; i++) {
-			if(((parep_mpi_node_group_ids[i] == 0) || (parep_mpi_node_group_nodeids[i] == 0))) {
+			if(((parep_mpi_node_group_ids[i] == 0) || (parep_mpi_node_group_nodeids[i] == parep_mpi_node_group_leader_nodeids[i]))) {
 				check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 				int ret;
 				do {
@@ -1974,7 +2594,7 @@ void perform_propagate(void *buffer, size_t size) {
 			}
 		}
 	} else {
-		if(parep_mpi_node_group_nodeid == 0) {
+		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 			int cmd = *((int *)buffer);
 			if((cmd == CMD_STORE) || (cmd == CMD_STORE_MULTIPLE)) {
 				int dsock;
@@ -2521,10 +3141,10 @@ void handle_store_multiple_cmd(int csocket, bool propagate) {
 		parep_mpi_num_dyn_socks--;
 		pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
 		pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
-		if(propagate || (parep_mpi_node_group_nodeid == 0)) {
+		if(propagate || (parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid)) {
 			int cmd;
 			if(isMainServer) cmd = CMD_STORE_MULTIPLE_NO_PROP;
-			else if((parep_mpi_node_group_nodeid == 0) && (!propagate)) cmd = CMD_STORE_MULTIPLE_NO_PROP;
+			else if((parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) && (!propagate)) cmd = CMD_STORE_MULTIPLE_NO_PROP;
 			else cmd = CMD_STORE_MULTIPLE;
 			
 			void *propbuf = malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint16_t)) + (storenum*sizeof(uint16_t)));
@@ -2577,10 +3197,10 @@ void handle_store_multiple_cmd(int csocket, bool propagate) {
 		parep_mpi_num_dyn_socks--;
 		pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
 		pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
-		if(propagate || (parep_mpi_node_group_nodeid == 0)) {
+		if(propagate || (parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid)) {
 			int cmd;
 			if(isMainServer) cmd = CMD_STORE_MULTIPLE_NO_PROP;
-			else if((parep_mpi_node_group_nodeid == 0) && (!propagate)) cmd = CMD_STORE_MULTIPLE_NO_PROP;
+			else if((parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) && (!propagate)) cmd = CMD_STORE_MULTIPLE_NO_PROP;
 			else cmd = CMD_STORE_MULTIPLE;
 			
 			void *propbuf = malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)));
@@ -2635,10 +3255,10 @@ void handle_store_multiple_cmd(int csocket, bool propagate) {
 		parep_mpi_num_dyn_socks--;
 		pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
 		pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
-		if(propagate || (parep_mpi_node_group_nodeid == 0)) {
+		if(propagate || (parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid)) {
 			int cmd;
 			if(isMainServer) cmd = CMD_STORE_MULTIPLE_NO_PROP;
-			else if((parep_mpi_node_group_nodeid == 0) && (!propagate)) cmd = CMD_STORE_MULTIPLE_NO_PROP;
+			else if((parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) && (!propagate)) cmd = CMD_STORE_MULTIPLE_NO_PROP;
 			else cmd = CMD_STORE_MULTIPLE;
 			
 			void *propbuf = malloc(sizeof(int) + sizeof(int) + 20 + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)) + (storenum*sizeof(uint32_t)));
@@ -2699,10 +3319,10 @@ void handle_store_cmd(int client_socket, bool propagate) {
 		parep_mpi_num_dyn_socks--;
 		pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
 		pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
-		if(propagate || (parep_mpi_node_group_nodeid == 0)) {
+		if(propagate || (parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid)) {
 			int cmd;
 			if(isMainServer) cmd = CMD_STORE_NO_PROP;
-			else if((parep_mpi_node_group_nodeid == 0) && (!propagate)) cmd = CMD_STORE_NO_PROP;
+			else if((parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) && (!propagate)) cmd = CMD_STORE_NO_PROP;
 			else cmd = CMD_STORE;
 			
 			void *propbuf = malloc(sizeof(int) + 20 + sizeof(uint16_t) + sizeof(uint16_t));
@@ -2748,10 +3368,10 @@ void handle_store_cmd(int client_socket, bool propagate) {
 		parep_mpi_num_dyn_socks--;
 		pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
 		pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
-		if(propagate || (parep_mpi_node_group_nodeid == 0)) {
+		if(propagate || (parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid)) {
 			int cmd;
 			if(isMainServer) cmd = CMD_STORE_NO_PROP;
-			else if((parep_mpi_node_group_nodeid == 0) && (!propagate)) cmd = CMD_STORE_NO_PROP;
+			else if((parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) && (!propagate)) cmd = CMD_STORE_NO_PROP;
 			else cmd = CMD_STORE;
 			
 			void *propbuf = malloc(sizeof(int) + 20 + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t));
@@ -2798,10 +3418,10 @@ void handle_store_cmd(int client_socket, bool propagate) {
 		parep_mpi_num_dyn_socks--;
 		pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
 		pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
-		if(propagate || (parep_mpi_node_group_nodeid == 0)) {
+		if(propagate || (parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid)) {
 			int cmd;
 			if(isMainServer) cmd = CMD_STORE_NO_PROP;
-			else if((parep_mpi_node_group_nodeid == 0) && (!propagate)) cmd = CMD_STORE_NO_PROP;
+			else if((parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) && (!propagate)) cmd = CMD_STORE_NO_PROP;
 			else cmd = CMD_STORE;
 			
 			void *propbuf = malloc(sizeof(int) + 20 + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t));
@@ -2967,13 +3587,15 @@ void wait_process_end() {
 		int cmd = CMD_RPROC_TERM_ACK;
 		int dsock;
 		for(int i = 1; i < parep_mpi_node_num; i++) {
-			check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
-			int ret;
-			do {
-				ret = connect(dsock,(struct sockaddr *)(&(coordinator_addr[i])),sizeof(SA_IN));
-			} while(ret != 0);
-			write_to_fd(dsock,&cmd,sizeof(int));
-			close(dsock);
+			if(daemon_state[i] != PROC_TERMINATED) {
+				check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+				int ret;
+				do {
+					ret = connect(dsock,(struct sockaddr *)(&(coordinator_addr[i])),sizeof(SA_IN));
+				} while(ret != 0);
+				write_to_fd(dsock,&cmd,sizeof(int));
+				close(dsock);
+			}
 		}
 		i = 1;
 		while(i < parep_mpi_node_num) {
@@ -3007,8 +3629,13 @@ void wait_process_end() {
 void perform_cleanup() {
 	//SOCKET CLEANUP
 	pthread_join(empi_thread,NULL);
+	if(isMainServer) pthread_join(empi_exec_thread,NULL);
 	close(empi_socket);
 	close(empi_client_socket);
+	if(isMainServer) {
+		close(empi_exec_socket);
+		close(empi_exec_client_socket);
+	}
 	close(dyn_server_sock);
 	if(isMainServer) {
 		for(int i = 0; i < parep_mpi_node_size; i++) close(client_socket[i]);
@@ -3018,7 +3645,7 @@ void perform_cleanup() {
 	} else {
 		for(int i = 0; i < parep_mpi_node_size; i++) close(client_socket[i]);
 		close(daemon_server_socket);
-		if(parep_mpi_node_group_nodeid == 0) {
+		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 			for(int i = 1; i < parep_mpi_node_group_size; i++) close(daemon_socket[i]);
 			close(server_group_socket);
 		}
@@ -3033,7 +3660,8 @@ void perform_cleanup() {
 		free(daemon_socket);
 		free(parep_mpi_node_sizes);
 		free(rank_lims_all);
-	} else if(parep_mpi_node_group_nodeid == 0) {
+		free(parep_mpi_all_ranks);
+	} else if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 		free(daemon_socket);
 		free(parep_mpi_node_sizes);
 	}
@@ -3049,7 +3677,7 @@ void perform_cleanup() {
 		free(coordinator_addr);
 		free(group_coordinator_addr);
 	} else {
-		if(parep_mpi_node_group_nodeid == 0) {
+		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 			free(group_coordinator_addr);
 			free(group_daemon_state);
 		}
@@ -3130,15 +3758,19 @@ void handle_exit_cmd(int csocket) {
 		int cmd = CMD_EXIT;
 		*((int *)buffer) = cmd;
 		int dsock;
+		pthread_mutex_lock(&proc_state_mutex);
 		for(int i = 1; i < parep_mpi_node_num; i++) {
-			check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
-			int ret;
-			do {
-				ret = connect(dsock,(struct sockaddr *)(&(coordinator_addr[i])),sizeof(SA_IN));
-			} while(ret != 0);
-			write_to_fd(dsock,buffer,sizeof(int));
-			close(dsock);
+			if(daemon_state[i] != PROC_TERMINATED) {
+				check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
+				int ret;
+				do {
+					ret = connect(dsock,(struct sockaddr *)(&(coordinator_addr[i])),sizeof(SA_IN));
+				} while(ret != 0);
+				write_to_fd(dsock,buffer,sizeof(int));
+				close(dsock);
+			}
 		}
+		pthread_mutex_unlock(&proc_state_mutex);
 		
 		int local_term;
 		pthread_mutex_lock(&local_procs_term_mutex);
@@ -3229,11 +3861,19 @@ void handle_exit_cmd(int csocket) {
 		pthread_mutex_lock(&empi_waitpid_safe_mutex);
 		empi_waitpid_safe = 1;
 		pthread_cancel(empi_thread);
+		if(isMainServer) {
+			pthread_cancel(empi_exec_thread);
+		}
 		//write_to_fd(empi_client_socket,&empi_waitpid_safe,sizeof(int));
 		int ret;
 		do {
 			ret = kill(parep_mpi_empi_pid,SIGKILL);
 		} while((ret == -1) && (errno != ESRCH));
+		/*if(isMainServer && (parep_mpi_empi_exec_pid != -1)) {
+			do {
+				ret = kill(parep_mpi_empi_exec_pid,SIGKILL);
+			} while((ret == -1) && (errno != ESRCH));
+		}*/
 		pthread_cond_signal(&empi_waitpid_safe_cond);
 		pthread_mutex_unlock(&empi_waitpid_safe_mutex);
 		perform_cleanup();
@@ -3454,7 +4094,7 @@ void handle_proc_state_update(int csocket) {
 			if(isMainServer) {
 				pthread_mutex_lock(&daemon_sock_mutex);
 				for(int j = 1; j < parep_mpi_node_num; j++) {
-					if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+					if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 						write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 						write_to_fd(daemon_socket[j],&num_failed_procs,sizeof(int));
 						write_to_fd(daemon_socket[j],failed_ranks, sizeof(int) * num_failed_procs);
@@ -3593,12 +4233,13 @@ void handle_mpi_initialized(int csocket) {
 		int cmd = CMD_MPI_INITIALIZED;
 		pthread_mutex_lock(&daemon_sock_mutex);
 		for(int j = 1; j < parep_mpi_node_num; j++) {
-			if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+			if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 				write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 			}
 		}
 		pthread_mutex_unlock(&daemon_sock_mutex);
 		write_to_fd(empi_client_socket,&cmd,sizeof(int));
+		if(isMainServer) write_to_fd(empi_exec_client_socket,&cmd,sizeof(int));
 		pthread_mutex_lock(&client_sock_mutex);
 		for(int j = 0; j < parep_mpi_node_size; j++) {
 			if(isMainServer) {
@@ -3619,7 +4260,7 @@ void handle_mpi_initialized(int csocket) {
 int perform_local_barrier(int rank, bool *recv_rank) {
 	int local_rank = rank - rank_lims.start;
 	int barrier_size = 0;
-	if(parep_mpi_node_group_nodeid == 0) barrier_size = parep_mpi_node_group_nodesize;
+	if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) barrier_size = parep_mpi_node_group_nodesize;
 	else barrier_size = parep_mpi_node_size;
 	if(parep_mpi_barrier_count == 0) {
 		int failed_proc_reached_barrier = 0;
@@ -3627,7 +4268,7 @@ int perform_local_barrier(int rank, bool *recv_rank) {
 		if(local_proc_state[local_rank] != PROC_TERMINATED) {
 			recv_rank[local_rank] = true;
 			parep_mpi_barrier_count++;
-			if(parep_mpi_node_group_nodeid == 0) parep_mpi_group_barrier_count++;
+			if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) parep_mpi_group_barrier_count++;
 		}
 		pthread_mutex_unlock(&proc_state_mutex);
 		int nfailed;
@@ -3640,9 +4281,9 @@ int perform_local_barrier(int rank, bool *recv_rank) {
 				if(recv_rank[i] && (local_proc_state[i] == PROC_TERMINATED)) {
 					recv_rank[i] = false;
 					failed_proc_reached_barrier++;
-					if(parep_mpi_node_group_nodeid == 0) global_failed_proc_reached_barrier++;
+					if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) global_failed_proc_reached_barrier++;
 					parep_mpi_barrier_count--;
-					if(parep_mpi_node_group_nodeid == 0) parep_mpi_group_barrier_count--;
+					if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) parep_mpi_group_barrier_count--;
 				}
 			}
 			pthread_mutex_unlock(&proc_state_mutex);
@@ -3658,16 +4299,16 @@ int perform_local_barrier(int rank, bool *recv_rank) {
 					if(recv_rank[i] && local_proc_state[i] == PROC_TERMINATED) {
 						recv_rank[i] = false;
 						failed_proc_reached_barrier++;
-						if(parep_mpi_node_group_nodeid == 0) global_failed_proc_reached_barrier++;
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) global_failed_proc_reached_barrier++;
 						parep_mpi_barrier_count--;
-						if(parep_mpi_node_group_nodeid == 0) parep_mpi_group_barrier_count--;
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) parep_mpi_group_barrier_count--;
 					}
 				}
 				pthread_mutex_unlock(&proc_state_mutex);
 			}
 		}
 		assert(parep_mpi_barrier_count == barrier_size - nfailed);
-		if(parep_mpi_node_group_nodeid == 0) return global_failed_proc_reached_barrier;
+		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) return global_failed_proc_reached_barrier;
 		return failed_proc_reached_barrier;
 	} else {
 		pthread_mutex_lock(&proc_state_mutex);
@@ -3675,7 +4316,7 @@ int perform_local_barrier(int rank, bool *recv_rank) {
 			int nfailed;
 			recv_rank[local_rank] = true;
 			parep_mpi_barrier_count++;
-			if(parep_mpi_node_group_nodeid == 0) parep_mpi_group_barrier_count++;
+			if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) parep_mpi_group_barrier_count++;
 			pthread_mutex_lock(&parep_mpi_num_failed_mutex);
 			nfailed = parep_mpi_num_failed;
 			pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
@@ -3718,12 +4359,17 @@ void handle_remote_barrier(int csocket) {
 			for(int i = 0; i < parep_mpi_size; i++) recv_rank[i] = false;
 			parep_mpi_barrier_count += bcount;
 			int lfail;
-			if(parep_mpi_node_group_nodeids[nid] == 0) {
-				for(int i = rank_lims_all[nid].start; i < rank_lims_all[nid].start + parep_mpi_node_group_nodesizes[parep_mpi_node_group_ids[nid]]; i++) recv_rank[i] = true;
+			int sid = 0;
+			if(parep_mpi_node_group_nodeids[nid] == parep_mpi_node_group_leader_nodeids[nid]) {
+				int gid = parep_mpi_node_group_ids[nid];
+				for(int i = 0; i < gid; i++) {
+					sid += parep_mpi_node_group_sizes[i];
+				}
+				for(int i = rank_lims_all[sid].start; i < rank_lims_all[sid].start + parep_mpi_node_group_nodesizes[gid]; i++) recv_rank[i] = true;
 			} else {
 				for(int i = rank_lims_all[nid].start; i < rank_lims_all[nid].start + parep_mpi_node_sizes[nid]; i++) recv_rank[i] = true;
 			}
-			if(parep_mpi_node_group_nodeids[nid] == 0) lfail = parep_mpi_node_group_nodesizes[parep_mpi_node_group_ids[nid]] - bcount - parep_mpi_num_inform_failed_node_group[parep_mpi_node_group_ids[nid]];
+			if(parep_mpi_node_group_nodeids[nid] == parep_mpi_node_group_leader_nodeids[nid]) lfail = parep_mpi_node_group_nodesizes[parep_mpi_node_group_ids[nid]] - bcount - parep_mpi_num_inform_failed_node_group[parep_mpi_node_group_ids[nid]];
 			else lfail = parep_mpi_node_sizes[nid] - bcount - parep_mpi_num_inform_failed_node[nid];
 			assert(lfail >= fprb);
 			if(lfail > 0) {
@@ -3821,7 +4467,7 @@ void handle_remote_barrier(int csocket) {
 			if(global_failed_proc_reached_barrier && fail_ready) fail_ready = 0;
 			pthread_mutex_lock(&daemon_sock_mutex);
 			for(int j = 1; j < parep_mpi_node_num; j++) {
-				if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+				if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 					write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 					write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
 				}
@@ -3850,12 +4496,17 @@ void handle_remote_barrier(int csocket) {
 			int nfailed;
 			parep_mpi_barrier_count += bcount;
 			int lfail;
-			if(parep_mpi_node_group_nodeids[nid] == 0) {
-				for(int i = rank_lims_all[nid].start; i < rank_lims_all[nid].start + parep_mpi_node_group_nodesizes[parep_mpi_node_group_ids[nid]]; i++) recv_rank[i] = true;
+			int sid = 0;
+			if(parep_mpi_node_group_nodeids[nid] == parep_mpi_node_group_leader_nodeids[nid]) {
+				int gid = parep_mpi_node_group_ids[nid];
+				for(int i = 0; i < gid; i++) {
+					sid += parep_mpi_node_group_sizes[i];
+				}
+				for(int i = rank_lims_all[sid].start; i < rank_lims_all[sid].start + parep_mpi_node_group_nodesizes[gid]; i++) recv_rank[i] = true;
 			} else {
 				for(int i = rank_lims_all[nid].start; i < rank_lims_all[nid].start + parep_mpi_node_sizes[nid]; i++) recv_rank[i] = true;
 			}
-			if(parep_mpi_node_group_nodeids[nid] == 0) lfail = parep_mpi_node_group_nodesizes[parep_mpi_node_group_ids[nid]] - bcount - parep_mpi_num_inform_failed_node_group[parep_mpi_node_group_ids[nid]];
+			if(parep_mpi_node_group_nodeids[nid] == parep_mpi_node_group_leader_nodeids[nid]) lfail = parep_mpi_node_group_nodesizes[parep_mpi_node_group_ids[nid]] - bcount - parep_mpi_num_inform_failed_node_group[parep_mpi_node_group_ids[nid]];
 			else lfail = parep_mpi_node_sizes[nid] - bcount - parep_mpi_num_inform_failed_node[nid];
 			assert(lfail >= fprb);
 			if(lfail > 0) {
@@ -3872,7 +4523,7 @@ void handle_remote_barrier(int csocket) {
 		}
 		pthread_mutex_unlock(&parep_mpi_barrier_count_mutex);
 	} else {
-		assert(parep_mpi_node_group_nodeid == 0);
+		assert(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid);
 		int group_nid = nid - parep_mpi_node_id;
 		int barrier_size = parep_mpi_node_group_nodesize;
 		pthread_mutex_lock(&parep_mpi_barrier_count_mutex);
@@ -3910,7 +4561,7 @@ void handle_remote_barrier(int csocket) {
 						recv_rank[i] = false;
 						global_failed_proc_reached_barrier++;
 						parep_mpi_barrier_count--;
-						if(parep_mpi_node_group_nodeid == 0) parep_mpi_group_barrier_count--;
+						if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) parep_mpi_group_barrier_count--;
 					}
 				}
 				pthread_mutex_unlock(&proc_state_mutex);
@@ -3927,7 +4578,7 @@ void handle_remote_barrier(int csocket) {
 							recv_rank[i] = false;
 							global_failed_proc_reached_barrier++;
 							parep_mpi_barrier_count--;
-							if(parep_mpi_node_group_nodeid == 0) parep_mpi_group_barrier_count--;
+							if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) parep_mpi_group_barrier_count--;
 						}
 					}
 					pthread_mutex_unlock(&proc_state_mutex);
@@ -4093,7 +4744,7 @@ void handle_barrier(int csocket) {
 			if(global_failed_proc_reached_barrier && fail_ready) fail_ready = 0;
 			pthread_mutex_lock(&daemon_sock_mutex);
 			for(int j = 1; j < parep_mpi_node_num; j++) {
-				if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+				if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 					write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 					write_to_fd(daemon_socket[j],&fail_ready,sizeof(int));
 				}
@@ -4135,7 +4786,7 @@ void handle_barrier(int csocket) {
 	} else {
 		pthread_mutex_lock(&parep_mpi_barrier_count_mutex);
 		if(parep_mpi_barrier_count == 0) {
-			if(parep_mpi_node_group_nodeid == 0) {
+			if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 				pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
 				if(parep_mpi_barrier_running == 0) {
 					parep_mpi_barrier_running = 1;
@@ -4169,13 +4820,13 @@ void handle_barrier(int csocket) {
 			for(int i = 0; i < parep_mpi_node_size; i++) recv_rank[i] = false;
 			int fprb = perform_local_barrier(rank,recv_rank);
 			free(recv_rank);
-			if(parep_mpi_node_group_nodeid == 0) bcount = parep_mpi_group_barrier_count;
+			if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) bcount = parep_mpi_group_barrier_count;
 			else bcount = parep_mpi_barrier_count;
 			fprocrb = global_failed_proc_reached_barrier;
 			parep_mpi_barrier_count = 0;
 			parep_mpi_group_barrier_count = 0;
 			global_failed_proc_reached_barrier = 0;
-			if(parep_mpi_node_group_nodeid == 0) {
+			if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 				int dsock;
 				check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 				int cmd = CMD_REMOTE_BARRIER;
@@ -4237,7 +4888,7 @@ void handle_rem_recv(int csocket) {
 				int cmd = CMD_REM_RECV;
 				pthread_mutex_lock(&daemon_sock_mutex);
 				for(int j = 1; j < parep_mpi_node_num; j++) {
-					if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+					if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 						write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 					}
 				}
@@ -4255,7 +4906,7 @@ void handle_rem_recv(int csocket) {
 			pthread_mutex_unlock(&rem_recv_running_mutex);
 		}
 	} else {
-		if(parep_mpi_node_group_nodeid == 0) {
+		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 			int dsock;
 			check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 			int cmd = CMD_REM_RECV;
@@ -4292,7 +4943,7 @@ void handle_inform_barrier_running(int csocket) {
 		}
 		pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
 	} else {
-		assert(parep_mpi_node_group_nodeid == 0);
+		assert(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid);
 		pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
 		if(parep_mpi_barrier_running == 0) {
 			parep_mpi_barrier_running = 1;
@@ -4323,7 +4974,7 @@ void handle_rem_recv_finished(int csocket) {
 		pthread_cond_broadcast(&rem_recv_running_cond);
 		pthread_mutex_unlock(&rem_recv_running_mutex);
 	} else {
-		if(parep_mpi_node_group_nodeid == 0) {
+		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 			int dsock;
 			check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 			int cmd = CMD_REM_RECV_FINISHED;
@@ -4475,7 +5126,7 @@ void handle_inform_finalize_reached(int csocket) {
 	pthread_mutex_lock(&parep_mpi_finalize_reached_mutex);
 	if(parep_mpi_finalize_reached == 0) {
 		if(!isMainServer) {
-			if(parep_mpi_node_group_nodeid == 0) {
+			if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
 				int dsock;
 				check((dsock = socket(AF_INET, SOCK_STREAM, 0)),"Failed to create socket");
 				int cmd = CMD_INFORM_FINALIZE_REACHED;
@@ -4512,7 +5163,7 @@ void handle_inform_predict(int csocket) {
 		if(msgsize >= sizeof(pid_t)) break;
 	}
 	msgsize = 0;
-	while((bytes_read = read(csocket,(&fnode)+msgsize, 256 - msgsize)) > 0) {
+	while((bytes_read = read(csocket,(fnode)+msgsize, 256 - msgsize)) > 0) {
 		msgsize += bytes_read;
 		if(msgsize >= 256) break;
 	}
@@ -4595,7 +5246,7 @@ void handle_inform_predict(int csocket) {
 		timestamp = time(NULL);
 		pthread_mutex_lock(&daemon_sock_mutex);
 		for(int j = 1; j < parep_mpi_node_num; j++) {
-			if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == 0))) {
+			if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
 				write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 				write_to_fd(daemon_socket[j],&targrank,sizeof(int));
 				write_to_fd(daemon_socket[j],&timestamp,sizeof(time_t));
@@ -4617,6 +5268,114 @@ void handle_inform_predict(int csocket) {
 	}
 }
 
+void handle_inform_predict_node(int csocket) {
+	char fnode[256];
+	size_t bytes_read;
+	int msgsize = 0;
+	while((bytes_read = read(csocket,(fnode)+msgsize, 256 - msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= 256) break;
+	}
+	close(csocket);
+	pthread_mutex_lock(&parep_mpi_num_dyn_socks_mutex);
+	parep_mpi_num_dyn_socks--;
+	pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
+	pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
+	
+	pthread_mutex_lock(&proc_state_mutex);
+	int node_id = -1;
+	for(int j = 0; j < parep_mpi_node_num; j++) {
+		if(!strcmp(fnode,coordinator_name[j])) {
+			node_id = j;
+			break;
+		}
+	}
+	if((node_id < 0) || (node_id >= parep_mpi_node_num)) {
+		pthread_mutex_unlock(&proc_state_mutex);
+		return;
+	}
+	if(daemon_state[node_id] == PROC_TERMINATED) {
+		printf("%d: Predicted node already failed %s\n",getpid(),fnode);
+		fflush(stdout);
+		pthread_mutex_unlock(&proc_state_mutex);
+		return;
+	}
+	assert(daemon_state[node_id] != PROC_TERMINATED);
+	pthread_mutex_unlock(&proc_state_mutex);
+	
+	time_t timestamp = time(NULL);
+	
+	//Propagate probranks
+	int exit_recvd;
+	int local_term;
+	pthread_mutex_lock(&exit_cmd_recvd_mutex);
+	exit_recvd = exit_cmd_recvd;
+	pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+	pthread_mutex_lock(&local_procs_term_mutex);
+	local_term = local_procs_term;
+	pthread_mutex_unlock(&local_procs_term_mutex);
+	if((exit_recvd == 0) && (local_term == 0)) {
+		pthread_mutex_lock(&parep_mpi_block_predict_mutex);
+		while(parep_mpi_block_predict) {
+			pthread_cond_wait(&parep_mpi_block_predict_cond,&parep_mpi_block_predict_mutex);
+		}
+		pthread_mutex_unlock(&parep_mpi_block_predict_mutex);
+		pthread_mutex_lock(&ckpt_mutex);
+		while(ckpt_active == 0) {
+			pthread_cond_wait(&ckpt_cond,&ckpt_mutex);
+		}
+		pthread_mutex_unlock(&ckpt_mutex);
+		int cmd = CMD_INFORM_PREDICT_NODE;
+		pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+		pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
+		while(parep_mpi_barrier_running == 1) {
+			pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+			pthread_cond_wait(&parep_mpi_barrier_running_cond,&parep_mpi_barrier_running_mutex);
+			if(parep_mpi_barrier_running == 0) pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+		}
+		pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
+		pthread_mutex_lock(&rem_recv_running_mutex);
+		while(rem_recv_recvd || rem_recv_running) {
+			pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+			pthread_cond_wait(&rem_recv_running_cond,&rem_recv_running_mutex);
+			if(!(rem_recv_recvd || rem_recv_running)) pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+		}
+		pthread_mutex_unlock(&rem_recv_running_mutex);
+		pthread_mutex_lock(&proc_state_mutex);
+		if(daemon_state[node_id] == PROC_TERMINATED) {
+			printf("%d: Predicted node already failed %s\n",getpid(),fnode);
+			fflush(stdout);
+			pthread_mutex_unlock(&proc_state_mutex);
+			pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+			return;
+		}
+		timestamp = time(NULL);
+		pthread_mutex_lock(&daemon_sock_mutex);
+		for(int j = 1; j < parep_mpi_node_num; j++) {
+			if((daemon_state[j] != PROC_TERMINATED)  && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
+				write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+				write_to_fd(daemon_socket[j],&(parep_mpi_node_sizes[node_id]),sizeof(int));
+				write_to_fd(daemon_socket[j],&(parep_mpi_all_ranks[rank_lims_all[node_id].start]),parep_mpi_node_sizes[node_id]*sizeof(int));
+				write_to_fd(daemon_socket[j],&timestamp,sizeof(time_t));
+			}
+		}
+		pthread_mutex_unlock(&daemon_sock_mutex);
+
+		pthread_mutex_lock(&client_sock_mutex);
+		for(int j = 0; j < parep_mpi_node_size; j++) {
+			if(global_proc_state[j] != PROC_TERMINATED) {
+				write_to_fd(client_socket[j],&cmd,sizeof(int));
+				write_to_fd(client_socket[j],&(parep_mpi_node_sizes[node_id]),sizeof(int));
+				write_to_fd(client_socket[j],&(parep_mpi_all_ranks[rank_lims_all[node_id].start]),parep_mpi_node_sizes[node_id]*sizeof(int));
+				write_to_fd(client_socket[j],&timestamp,sizeof(time_t));
+			}
+		}
+		pthread_mutex_unlock(&client_sock_mutex);
+		pthread_mutex_unlock(&proc_state_mutex);
+		pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+	}
+}
+
 void handle_block_predict(int csocket) {
 	close(csocket);
 	pthread_mutex_lock(&parep_mpi_num_dyn_socks_mutex);
@@ -4628,6 +5387,146 @@ void handle_block_predict(int csocket) {
 	parep_mpi_block_predict = 1;
 	pthread_cond_signal(&parep_mpi_block_predict_cond);
 	pthread_mutex_unlock(&parep_mpi_block_predict_mutex);
+}
+
+void handle_check_node_fail(int csocket) {
+	int num_nodes_failed;
+	int node_group_id;
+	int *failed_node_group_nodeids;
+	size_t bytes_read;
+	int msgsize = 0;
+	while((bytes_read = read(csocket,(&num_nodes_failed)+msgsize, sizeof(int) - msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= sizeof(int)) break;
+	}
+	if(num_nodes_failed > 0) {
+		msgsize = 0;
+		while((bytes_read = read(csocket,(&node_group_id)+msgsize, sizeof(int) - msgsize)) > 0) {
+			msgsize += bytes_read;
+			if(msgsize >= sizeof(int)) break;
+		}
+		failed_node_group_nodeids = (int *)malloc(sizeof(int)*num_nodes_failed);
+		msgsize = 0;
+		while((bytes_read = read(csocket,((char *)failed_node_group_nodeids)+msgsize, (sizeof(int)*num_nodes_failed) - msgsize)) > 0) {
+			msgsize += bytes_read;
+			if(msgsize >= (sizeof(int)*num_nodes_failed)) break;
+		}
+	}
+	close(csocket);
+	pthread_mutex_lock(&parep_mpi_num_dyn_socks_mutex);
+	parep_mpi_num_dyn_socks--;
+	pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
+	pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
+	
+	if(num_nodes_failed > 0) {
+		pthread_mutex_lock(&proc_state_mutex);
+		for(int i = 0; i < num_nodes_failed; i++) {
+			int node_group_offset = 0;
+			for(int j = 0; j < node_group_id; j++) {
+				node_group_offset += parep_mpi_node_group_sizes[j];
+			}
+			int failed_node_id = failed_node_group_nodeids[i] + node_group_offset;
+			daemon_state[failed_node_id] = PROC_TERMINATED;
+			pthread_cond_signal(&proc_state_cond);
+			parep_mpi_num_nodes_failed++;
+		}
+		pthread_mutex_unlock(&proc_state_mutex);
+	}
+	pthread_mutex_lock(&parep_mpi_node_group_checked_mutex);
+	parep_mpi_node_group_checked++;
+	pthread_cond_signal(&parep_mpi_node_group_checked_cond);
+	pthread_mutex_unlock(&parep_mpi_node_group_checked_mutex);
+	if(num_nodes_failed > 0) {
+		free(failed_node_group_nodeids);
+	}
+}
+
+void handle_get_ngroup_leader(int csocket) {
+	size_t bytes_read;
+	int msgsize = 0;
+	int ngid,ngnid,leader_ngid;
+	int nid;
+	int new_leader;
+	while((bytes_read = read(csocket,(&ngid)+msgsize, sizeof(int) - msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= sizeof(int)) break;
+	}
+	
+	msgsize = 0;
+	while((bytes_read = read(csocket,(&ngnid)+msgsize, sizeof(int) - msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= sizeof(int)) break;
+	}
+	
+	msgsize = 0;
+	while((bytes_read = read(csocket,(&leader_ngid)+msgsize, sizeof(int) - msgsize)) > 0) {
+		msgsize += bytes_read;
+		if(msgsize >= sizeof(int)) break;
+	}
+	
+	pthread_mutex_lock(&proc_state_mutex);
+	
+	int node_group_offset = 0;
+	for(int j = 0; j < ngid; j++) {
+		node_group_offset += parep_mpi_node_group_sizes[j];
+	}
+	nid = node_group_offset + ngnid;
+	
+	if(leader_ngid == parep_mpi_node_group_leader_nodeids[nid]) {
+		parep_mpi_reconf_ngroup = 1;
+		new_leader = leader_ngid + 1;
+		while(daemon_state[node_group_offset + new_leader] == PROC_TERMINATED) {
+			new_leader += 1;
+		}
+		close(daemon_socket[node_group_offset+parep_mpi_node_group_leader_nodeids[nid]]);
+		daemon_socket[node_group_offset+parep_mpi_node_group_leader_nodeids[nid]] = -1;
+		for(int j = node_group_offset; j < node_group_offset + parep_mpi_node_group_sizes[ngid]; j++) {
+			parep_mpi_node_group_leader_nodeids[j] = new_leader;
+		}
+	} else {
+		new_leader = parep_mpi_node_group_leader_nodeids[nid];
+	}
+	
+	write_to_fd(csocket,&new_leader,sizeof(int));
+	
+	memcpy(&(group_coordinator_addr[ngid].sin_addr.s_addr),&(coordinator_addr[node_group_offset+new_leader].sin_addr.s_addr),sizeof(coordinator_addr[node_group_offset+new_leader].sin_addr.s_addr));
+	
+	char IP_addr[256];
+	strcpy(IP_addr,inet_ntoa(group_coordinator_addr[ngid].sin_addr));
+	write_to_fd(csocket,IP_addr,256);
+	
+	if(ngnid == new_leader) {
+		write_to_fd(csocket, &(coordinator_addr[node_group_offset]), (sizeof(SA_IN) * parep_mpi_node_group_sizes[ngid]));
+		write_to_fd(csocket, &(parep_mpi_node_sizes[node_group_offset]), (sizeof(int) * parep_mpi_node_group_sizes[ngid]));
+		write_to_fd(csocket, &(daemon_state[node_group_offset]), (sizeof(SA_IN) * parep_mpi_node_group_sizes[ngid]));
+		int tmpsock;
+		SA_IN client_addr;
+		int addr_size;
+		pthread_mutex_unlock(&proc_state_mutex);
+		tmpsock = accept(server_socket, (SA *)&client_addr, (socklen_t *)&addr_size);
+		if((tmpsock == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+			while((tmpsock == -1) && ((errno == EMFILE) || (errno == ENFILE))) {
+				rlim_nofile.rlim_cur *= 2;
+				assert(rlim_nofile.rlim_cur <= rlim_nofile.rlim_max);
+				setrlimit(RLIMIT_NOFILE,&rlim_nofile);
+				tmpsock = accept(server_socket, (SA *)&client_addr, (socklen_t *)&addr_size);
+			}
+			check(tmpsock,"accept reconfig failed");
+		} else check(tmpsock,"accept reconfig wrong failed");
+		pthread_mutex_lock(&proc_state_mutex);
+		daemon_socket[node_group_offset+new_leader] = tmpsock;
+		daemon_state[node_group_offset+leader_ngid] = PROC_TERMINATED;
+		if(!waiting_for_node_fail_detect) parep_mpi_num_nodes_failed += 1;
+		parep_mpi_reconf_ngroup = 0;
+	}
+	pthread_cond_signal(&proc_state_cond);
+	pthread_mutex_unlock(&proc_state_mutex);
+	
+	close(csocket);
+	pthread_mutex_lock(&parep_mpi_num_dyn_socks_mutex);
+	parep_mpi_num_dyn_socks--;
+	pthread_cond_signal(&parep_mpi_num_dyn_socks_cond);
+	pthread_mutex_unlock(&parep_mpi_num_dyn_socks_mutex);
 }
 
 void *handle_connection(void *p_client_socket) {
@@ -4740,6 +5639,15 @@ void *handle_connection(void *p_client_socket) {
 		case CMD_BLOCK_PREDICT:
 			handle_block_predict(csocket);
 			break;
+		case CMD_CHECK_NODE_FAIL:
+			handle_check_node_fail(csocket);
+			break;
+		case CMD_GET_NGROUP_LEADER:
+			handle_get_ngroup_leader(csocket);
+			break;
+		case CMD_INFORM_PREDICT_NODE:
+			handle_inform_predict_node(csocket);
+			break;
 	}
 	
 	return NULL;
@@ -4759,6 +5667,12 @@ int main(int argc, char **argv) {
 		if(strcmp(argv[i],"-ckpt_interval") == 0) {
 			ckpt_interval = atoi(argv[i+1]);
 			break;
+		}
+	}
+	
+	if(getenv("PAREP_MPI_COMPUTE_CKPT") != NULL) {
+		if(!strcmp(getenv("PAREP_MPI_COMPUTE_CKPT"),"1")) {
+			ckpt_interval = atoi(getenv("PAREP_MPI_CKPT_INTERVAL"));
 		}
 	}
 	

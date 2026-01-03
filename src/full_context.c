@@ -44,6 +44,10 @@ extern int parep_mpi_node_id;
 extern int parep_mpi_node_num;
 extern int parep_mpi_node_size;
 extern int parep_mpi_original_rank;
+extern int parep_mpi_baseline_rank;
+extern int cmp_ratio;
+extern int rep_ratio;
+extern int comp_per_rep;
 extern pid_t parep_mpi_pid;
 
 extern struct collective_data *last_collective;
@@ -2272,6 +2276,12 @@ static void remap_and_cleanup() {
 		*((int *)(((address)(&___ckpt_counter)) - (address)tempMap + pstat.restore_start)) = ___ckpt_counter;
 		
 		*((int *)(((address)(&parep_mpi_pmi_fd)) - (address)tempMap + pstat.restore_start)) = parep_mpi_pmi_fd;
+		
+		*((int *)(((address)(&parep_mpi_baseline_rank)) - (address)tempMap + pstat.restore_start)) = parep_mpi_baseline_rank;
+		
+		*((int *)(((address)(&cmp_ratio)) - (address)tempMap + pstat.restore_start)) = cmp_ratio;
+		*((int *)(((address)(&rep_ratio)) - (address)tempMap + pstat.restore_start)) = rep_ratio;
+		*((int *)(((address)(&comp_per_rep)) - (address)tempMap + pstat.restore_start)) = comp_per_rep;
 		
 		parep_mpi_memcpy((void *)(((address)(&mpi_ft_ckpt_start_time)) - (address)tempMap + pstat.restore_start),&mpi_ft_ckpt_start_time,sizeof(struct timespec));
 		

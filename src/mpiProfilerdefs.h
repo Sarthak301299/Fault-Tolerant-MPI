@@ -12,9 +12,45 @@ extern "C" {
 
 extern void *extLib;
 
+typedef long MPI_Aint;
+
+struct mpi_ft_datatype;
+
+struct mpi_dt_contiguous {
+	int count;
+	struct mpi_ft_datatype *oldtype;
+};
+
+struct mpi_dt_vector {
+	int count;
+	int blocklength;
+	int stride;
+	struct mpi_ft_datatype *oldtype;
+};
+
+struct mpi_dt_subarray {
+	int ndims;
+	int *array_of_sizes;
+	int *array_of_subsizes;
+	int *array_of_starts;
+	int order;
+	struct mpi_ft_datatype *oldtype;
+};
+
 struct mpi_ft_datatype {
 	EMPI_Datatype edatatype;
+	EMPI_Datatype iodttype;
+	EMPI_Datatype pairdttype;
+	EMPI_Datatype bufdttype;
 	int size;
+	MPI_Aint lb;
+	MPI_Aint extent;
+	int type;
+	union {
+		struct mpi_dt_contiguous mpi_dt_contiguous;
+		struct mpi_dt_vector mpi_dt_vector;
+		struct mpi_dt_subarray mpi_dt_subarray;
+	} args;
 };
 //struct mpi_ft_datatype;
 typedef struct mpi_ft_datatype *MPI_Datatype;
@@ -26,6 +62,7 @@ struct mpi_ft_comm {
 	EMPI_Comm EMPI_CMP_REP_INTERCOMM;
 	EMPI_Comm EMPI_CMP_NO_REP;
 	EMPI_Comm EMPI_CMP_NO_REP_INTERCOMM;
+	EMPI_Comm pairComm;
 };
 //struct mpi_ft_comm;
 typedef struct mpi_ft_comm *MPI_Comm;
@@ -38,7 +75,42 @@ typedef struct mpi_ft_op *MPI_Op;
 
 typedef int MPI_Group;
 typedef int MPI_Win;
-typedef struct ADIOI_FileD *MPI_File;
+typedef int MPI_Info;
+typedef long long MPI_Offset;
+
+struct mpi_ft_view {
+	MPI_Offset disp;
+	MPI_Datatype etype;
+	MPI_Datatype filetype;
+	char datarep[256];
+};
+typedef struct mpi_ft_view MPI_View;
+
+struct mpi_ft_file;
+
+struct parep_mpi_fh_list_node {
+	struct mpi_ft_file *fh;
+	struct parep_mpi_fh_list_node *next;
+	struct parep_mpi_fh_list_node *prev;
+};
+typedef struct parep_mpi_fh_list_node fhNode;
+
+struct mpi_ft_file {
+	EMPI_File efh;
+	EMPI_File pairfh;
+	EMPI_File rdfh;
+	EMPI_File repfh;
+	MPI_Comm comm;
+	char filename[256];
+	int amode;
+	MPI_Info info;
+	MPI_View virt_view;
+	MPI_View real_view;
+	fhNode *fnode;
+	EMPI_Offset fp;
+	EMPI_Offset fpsh;
+};
+typedef struct mpi_ft_file *MPI_File;
 
 typedef enum MPIR_Win_flavor {MPI_WIN_FLAVOR_CREATE = 1,    MPI_WIN_FLAVOR_ALLOCATE = 2,    MPI_WIN_FLAVOR_DYNAMIC = 3,    MPI_WIN_FLAVOR_SHARED = 4} MPIR_Win_flavor_t;
 typedef enum MPIR_Win_model {MPI_WIN_SEPARATE = 1,    MPI_WIN_UNIFIED = 2} MPIR_Win_model_t;
@@ -88,10 +160,15 @@ struct mpi_ft_request {
 	MPI_Comm comm;
 	MPI_Status status;
 	int type;
-	void *bufloc;
-	void *storeloc;
+	int iotype;
+	MPI_Offset totalio;
+	bool iotransfercomplete;
+	void *bufloc; //Doubles as MPI_File for I/O
+	void *storeloc; //Doubles as buf for I/O
+	int count;
+	MPI_Datatype datatype;
 	reqNode *rnode;
-	commbuf_node_t *cbuf;
+	commbuf_node_t *cbuf; //Doubles as buffer for sending to replica for I/O
 };
 //struct mpi_ft_request;
 typedef struct mpi_ft_request *MPI_Request;
@@ -101,11 +178,8 @@ typedef void (MPI_User_function) ( void *, void *, int *, MPI_Datatype * );
 typedef int (MPI_Copy_function) ( MPI_Comm, int, void *, void *, void *, int * );
 typedef int (MPI_Delete_function) ( MPI_Comm, int, void *, void * );
 enum MPIR_Combiner_enum {MPI_COMBINER_NAMED = 1,    MPI_COMBINER_DUP = 2,    MPI_COMBINER_CONTIGUOUS = 3,    MPI_COMBINER_VECTOR = 4,    MPI_COMBINER_HVECTOR_INTEGER = 5,    MPI_COMBINER_HVECTOR = 6,    MPI_COMBINER_INDEXED = 7,    MPI_COMBINER_HINDEXED_INTEGER = 8,    MPI_COMBINER_HINDEXED = 9,    MPI_COMBINER_INDEXED_BLOCK = 10,    MPI_COMBINER_STRUCT_INTEGER = 11,    MPI_COMBINER_STRUCT = 12,    MPI_COMBINER_SUBARRAY = 13,    MPI_COMBINER_DARRAY = 14,    MPI_COMBINER_F90_REAL = 15,    MPI_COMBINER_F90_COMPLEX = 16,    MPI_COMBINER_F90_INTEGER = 17,    MPI_COMBINER_RESIZED = 18,    MPI_COMBINER_HINDEXED_BLOCK = 19};
-typedef int MPI_Info;
-typedef long MPI_Aint;
 typedef int MPI_Fint;
 typedef long long MPI_Count;
-typedef long long MPI_Offset;
 typedef struct MPIR_T_enum_s * MPI_T_enum;
 typedef struct MPIR_T_cvar_handle_s * MPI_T_cvar_handle;
 typedef struct MPIR_T_pvar_handle_s * MPI_T_pvar_handle;

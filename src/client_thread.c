@@ -47,6 +47,12 @@ recvDataNode *recvDataRedTail = NULL;
 pthread_mutex_t recvDataListLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t recvDataListCond = PTHREAD_COND_INITIALIZER;
 
+fhNode *fhHead = NULL;
+fhNode *fhTail = NULL;
+
+pthread_mutex_t fhListLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t fhListCond = PTHREAD_COND_INITIALIZER;
+
 extern int rem_recv_msg_sent;
 extern pthread_mutex_t rem_recv_msg_sent_mutex;
 
@@ -139,6 +145,24 @@ recvDataNode *recvDataListFind(int src,int tag,MPI_Comm comm) {
 	return out;
 }
 
+recvDataNode *recvDataListFindWithId(int src,int tag,int id,MPI_Comm comm) {
+	recvDataNode *out = recvDataHead;
+	while(out != NULL) {
+		if(((out->pdata->target == src) || (src == MPI_ANY_SOURCE)) && ((out->pdata->tag == tag) || (tag == MPI_ANY_TAG)) && (out->pdata->comm == comm) && (out->pdata->id == id)) break;
+		out = out->next;
+	}
+	return out;
+}
+
+recvDataNode *recvDataListFindWildCard(int tag,MPI_Comm comm) {
+	recvDataNode *out = recvDataHead;
+	while(out != NULL) {
+		if((out->pdata->type == MPI_FT_WILDCARD_RECV) && ((out->pdata->tag == tag) || (tag == MPI_ANY_TAG)) && (out->pdata->comm == comm)) break;
+		out = out->next;
+	}
+	return out;
+}
+
 void recvDataRedListInsert(ptpdata *pdata) {
 	recvDataNode *newnode = parep_mpi_malloc(sizeof(recvDataNode));
 	newnode->pdata = pdata;
@@ -173,6 +197,33 @@ recvDataNode *recvDataRedListFind(int id,int type) {
 		out = out->next;
 	}
 	return out;
+}
+
+fhNode *fhListInsert(MPI_File fh) {
+	fhNode *newnode = parep_mpi_malloc(sizeof(fhNode));
+	newnode->fh = fh;
+	newnode->next = NULL;
+	newnode->prev = NULL;
+	if(fhTail == NULL) {
+		fhHead = newnode;
+	} else {
+		newnode->prev = fhTail;
+		fhTail->next = newnode;
+	}
+	fhTail = newnode;
+	return newnode;
+}
+
+void fhListDelete(fhNode *fnode) {
+	if(fnode->prev != NULL) fnode->prev->next = fnode->next;
+	else fhHead = fnode->next;
+	if(fnode->next != NULL) fnode->next->prev = fnode->prev;
+	else fhTail = fnode->prev;
+	parep_mpi_free(fnode);
+}
+
+bool fhListIsEmpty() {
+	return fhHead == NULL;
 }
 
 EMPI_Comm parep_mpi_new_comm;
@@ -250,8 +301,8 @@ int failed_proc_check() {
 				msgsize += bytes_read;
 				if(msgsize >= (sizeof(int))) break;
 			}
-			if((cmd != CMD_INFORM_PROC_FAILED) && (cmd != CMD_INFORM_PREDICT)) printf("%d: Got cmd %d during rem recv\n",getpid(),cmd);
-			assert((cmd == CMD_INFORM_PROC_FAILED) || (cmd == CMD_INFORM_PREDICT));
+			if((cmd != CMD_INFORM_PROC_FAILED) && (cmd != CMD_INFORM_PREDICT) || (cmd == CMD_INFORM_PREDICT_NODE)) printf("%d: Got cmd %d during rem recv\n",getpid(),cmd);
+			assert((cmd == CMD_INFORM_PROC_FAILED) || (cmd == CMD_INFORM_PREDICT) || (cmd == CMD_INFORM_PREDICT_NODE));
 			if(cmd == CMD_INFORM_PROC_FAILED) {
 				int num_failed_procs;
 				msgsize = 0;
@@ -333,7 +384,7 @@ int failed_proc_check() {
 				if(myrank >= nC) {
 					for(int j = 0; j < nC+nR; j++) {
 						if((j != myrank) && (j != repToCmpMap[myrank-nC])) {
-							if(isProcAlive[j]) {
+							//if(isProcAlive[j]) {
 								int flag = 0;
 								EMPI_Status stat;
 								do {
@@ -407,14 +458,14 @@ int failed_proc_check() {
 											
 											pthread_mutex_lock(&recvDataListLock);
 											recvDataListInsert(curargs);
-											pthread_cond_signal(&reqListCond);
+											pthread_cond_signal(&recvDataListCond);
 											pthread_mutex_unlock(&recvDataListLock);
 										}
 									}
 								} while(flag != 0);
-							}
+							//}
 						} else if((j < nC) && (j == repToCmpMap[myrank-nC])) {
-							if(isProcAlive[j]) {
+							//if(isProcAlive[j]) {
 								pthread_mutex_unlock(&collectiveLock);
 								pthread_rwlock_unlock(&commLock);
 								do {
@@ -444,84 +495,116 @@ int failed_proc_check() {
 										int extracount;
 										int size;
 										int tag = stat.EMPI_TAG;
-										assert((tag == MPI_FT_REDUCE_TAG) || (tag == MPI_FT_ALLREDUCE_TAG));
-										clcdata *curargs;
-										curargs = (clcdata *)parep_mpi_malloc(sizeof(clcdata));
-										EMPI_Type_size(EMPI_BYTE,&size);
-										EMPI_Get_count(&stat,EMPI_BYTE,&count);
-										if(size >= sizeof(int)) extracount = 1;
-										else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
-										else extracount = (((int)sizeof(int))/size) + 1;
-										count -= extracount;
-										curargs->completecmp = false;
-										curargs->completerep = false;
-										curargs->completecolls = NULL;
-										curargs->num_colls = 0;
-										curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
-										*(curargs->req) = MPI_REQUEST_NULL;
-										if(tag == MPI_FT_REDUCE_TAG) {
-											curargs->type = MPI_FT_REDUCE_TEMP;
-											(curargs->args).reduce.alloc_recvbuf = true;
-											(curargs->args).reduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
-											EMPI_Recv((curargs->args).reduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
-											memcpy(&(curargs->id),((curargs->args).reduce.recvbuf) + (count * size),sizeof(int));
+										assert((tag == MPI_FT_REDUCE_TAG) || (tag == MPI_FT_ALLREDUCE_TAG) || (tag == MPI_FT_WILDCARD_TAG));
+										if(tag == MPI_FT_WILDCARD_TAG) {
+											ptpdata *curargs;
+											curargs = (ptpdata *)parep_mpi_malloc(sizeof(ptpdata));
+											EMPI_Get_count(&stat,EMPI_INT,&count);
+											assert(count == 3);
+											int *tempbuf = (int *)parep_mpi_malloc(3*sizeof(int));
+											EMPI_Recv(tempbuf,count,EMPI_INT,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
+											curargs->target = tempbuf[0];
+											curargs->tag = tempbuf[1];
+											curargs->id = tempbuf[2];
+											curargs->type = MPI_FT_WILDCARD_RECV;
+											parep_mpi_free(tempbuf);
+											curargs->comm = comm;
 											if((curargs->id & 0xF0000000) != 0x70000000) {
-												parep_mpi_free((curargs->args).reduce.recvbuf);
-											}
-											(curargs->args).reduce.comm = comm;
-										} else if(tag == MPI_FT_ALLREDUCE_TAG) {
-											curargs->type = MPI_FT_ALLREDUCE_TEMP;
-											(curargs->args).allreduce.alloc_recvbuf = true;
-											(curargs->args).allreduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
-											EMPI_Recv((curargs->args).allreduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
-											memcpy(&(curargs->id),((curargs->args).allreduce.recvbuf) + (count * size),sizeof(int));
-											if((curargs->id & 0xF0000000) != 0x70000000) {
-												parep_mpi_free((curargs->args).allreduce.recvbuf);
-											}
-											(curargs->args).allreduce.comm = comm;
-										}
-										
-										if((curargs->id & 0xF0000000) != 0x70000000) {
-											parep_mpi_free(curargs->req);
-											parep_mpi_free(curargs);
-										} else {
-											assert(curargs->id >= parep_mpi_collective_id);
-											if(last_collective == NULL) {
-												curargs->prev = NULL;
-												curargs->next = NULL;
-												last_collective = curargs;
+												parep_mpi_free(curargs);
 											} else {
-												clcdata *temp = last_collective;
-												while((curargs->id <= temp->id) && (temp->next != NULL)) {
-													temp = temp->next;
+												pthread_mutex_lock(&peertopeerLock);
+												if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
+												else first_peertopeer = curargs;
+												curargs->prev = NULL;
+												curargs->next = last_peertopeer;
+												last_peertopeer = curargs;
+												pthread_cond_signal(&peertopeerCond);
+												pthread_mutex_unlock(&peertopeerLock);
+												
+												pthread_mutex_lock(&recvDataListLock);
+												recvDataListInsert((ptpdata *)curargs);
+												pthread_cond_signal(&recvDataListCond);
+												pthread_mutex_unlock(&recvDataListLock);
+											}
+										} else {
+											clcdata *curargs;
+											curargs = (clcdata *)parep_mpi_malloc(sizeof(clcdata));
+											EMPI_Type_size(EMPI_BYTE,&size);
+											EMPI_Get_count(&stat,EMPI_BYTE,&count);
+											if(size >= sizeof(int)) extracount = 1;
+											else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+											else extracount = (((int)sizeof(int))/size) + 1;
+											count -= extracount;
+											curargs->completecmp = false;
+											curargs->completerep = false;
+											curargs->completecolls = NULL;
+											curargs->num_colls = 0;
+											curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+											*(curargs->req) = MPI_REQUEST_NULL;
+											if(tag == MPI_FT_REDUCE_TAG) {
+												curargs->type = MPI_FT_REDUCE_TEMP;
+												(curargs->args).reduce.alloc_recvbuf = true;
+												(curargs->args).reduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
+												EMPI_Recv((curargs->args).reduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
+												memcpy(&(curargs->id),((curargs->args).reduce.recvbuf) + (count * size),sizeof(int));
+												if((curargs->id & 0xF0000000) != 0x70000000) {
+													parep_mpi_free((curargs->args).reduce.recvbuf);
 												}
-												if(curargs->id > temp->id) {
-													curargs->prev = temp->prev;
-													curargs->next = temp;
-													if(temp->prev != NULL) temp->prev->next = curargs;
-													else last_collective = curargs;
-													temp->prev = curargs;
-												} else {
-													curargs->prev = temp;
-													curargs->next = NULL;
-													temp->next = curargs;
+												(curargs->args).reduce.comm = comm;
+											} else if(tag == MPI_FT_ALLREDUCE_TAG) {
+												curargs->type = MPI_FT_ALLREDUCE_TEMP;
+												(curargs->args).allreduce.alloc_recvbuf = true;
+												(curargs->args).allreduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
+												EMPI_Recv((curargs->args).allreduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
+												memcpy(&(curargs->id),((curargs->args).allreduce.recvbuf) + (count * size),sizeof(int));
+												if((curargs->id & 0xF0000000) != 0x70000000) {
+													parep_mpi_free((curargs->args).allreduce.recvbuf);
 												}
+												(curargs->args).allreduce.comm = comm;
 											}
 											
-											pthread_mutex_lock(&recvDataListLock);
-											recvDataRedListInsert((ptpdata *)curargs);
-											pthread_cond_signal(&reqListCond);
-											pthread_mutex_unlock(&recvDataListLock);
+											if((curargs->id & 0xF0000000) != 0x70000000) {
+												parep_mpi_free(curargs->req);
+												parep_mpi_free(curargs);
+											} else {
+												assert(curargs->id >= parep_mpi_collective_id);
+												if(last_collective == NULL) {
+													curargs->prev = NULL;
+													curargs->next = NULL;
+													last_collective = curargs;
+												} else {
+													clcdata *temp = last_collective;
+													while((curargs->id <= temp->id) && (temp->next != NULL)) {
+														temp = temp->next;
+													}
+													if(curargs->id > temp->id) {
+														curargs->prev = temp->prev;
+														curargs->next = temp;
+														if(temp->prev != NULL) temp->prev->next = curargs;
+														else last_collective = curargs;
+														temp->prev = curargs;
+													} else {
+														curargs->prev = temp;
+														curargs->next = NULL;
+														temp->next = curargs;
+													}
+												}
+												
+												pthread_mutex_lock(&recvDataListLock);
+												recvDataRedListInsert((ptpdata *)curargs);
+												pthread_cond_signal(&recvDataListCond);
+												pthread_mutex_unlock(&recvDataListLock);
+											}
 										}
 									}
 								} while(flag != 0);
-							}
+							//}
 						}
 					}
 				} else {
 					for(int j = 0; j < nC; j++) {
 						if(j != myrank) {
-							if(isProcAlive[j]) {
+							//if(isProcAlive[j]) {
 								int flag = 0;
 								EMPI_Status stat;
 								do {
@@ -591,12 +674,12 @@ int failed_proc_check() {
 											
 											pthread_mutex_lock(&recvDataListLock);
 											recvDataListInsert(curargs);
-											pthread_cond_signal(&reqListCond);
+											pthread_cond_signal(&recvDataListCond);
 											pthread_mutex_unlock(&recvDataListLock);
 										}
 									}
 								} while(flag != 0);
-							}
+							//}
 						}
 					}
 				}
@@ -662,6 +745,14 @@ int failed_proc_check() {
 				_real_free(abs_failed_ranks);
 				_real_free(failed_ranks);
 				
+				/*for(fhNode *fhn = fhHead; fhn != NULL; fhn = fhn->next) {
+					MPI_File curfile = fhn->fh;
+					EMPI_File_close(&(curfile->efh));
+					EMPI_File_close(&(curfile->rdfh));
+					EMPI_File_close(&(curfile->pairfh));
+					EMPI_File_close(&(curfile->repfh));
+				}*/
+				
 				EMPI_Comm parep_mpi_new_comm;
 				EMPI_Comm_create_group(MPI_COMM_WORLD->eworldComm,current_alive_group,1234,&parep_mpi_new_comm);
 				
@@ -718,6 +809,7 @@ int failed_proc_check() {
 						else colorinternal = 1;
 						EMPI_Comm_split (MPI_COMM_WORLD->EMPI_COMM_CMP, colorinternal, 0, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
 						if(MPI_COMM_WORLD->EMPI_CMP_NO_REP != EMPI_COMM_NULL) EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_CMP_NO_REP, 0, MPI_COMM_WORLD->eworldComm, repLeader, 101, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM));
+						EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, newrank, 0, &(MPI_COMM_WORLD->pairComm));
 						MPI_COMM_WORLD->EMPI_COMM_REP = EMPI_COMM_NULL;
 					} else if (color == 1) {
 						EMPI_Comm_split (MPI_COMM_WORLD->eworldComm, color, 0, &(MPI_COMM_WORLD->EMPI_COMM_REP));
@@ -732,11 +824,16 @@ int failed_proc_check() {
 							}
 							EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_COMM_REP, 0, MPI_COMM_WORLD->eworldComm, rleader, 101, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM));
 						}
+						EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, repToCmpMap[newrank-nC], 0, &(MPI_COMM_WORLD->pairComm));
 						MPI_COMM_WORLD->EMPI_COMM_CMP = EMPI_COMM_NULL;
 					}
 				} else {
 					EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_COMM_CMP));
+					MPI_COMM_WORLD->EMPI_COMM_REP = EMPI_COMM_NULL;
+					MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM = EMPI_COMM_NULL;
 					EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
+					MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM = EMPI_COMM_NULL;
+					EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, newrank, 0, &(MPI_COMM_WORLD->pairComm));
 				}
 				
 				printf("Shrink completed from failed_proc_check newrank %d parep_mpi_rank %d new leader rank %d\n",newrank,parep_mpi_rank,parep_mpi_leader_rank);
@@ -783,8 +880,8 @@ int failed_proc_check() {
 						if(i < nR) rtcmap[i] = repToCmpMap[i];
 					}
 				}
-				parep_mpi_pred_list[currank] = curtimestamp;
 				
+				parep_mpi_pred_list[recvrank] = curtimestamp;
 				EMPI_Group current_group;
 				EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
 				EMPI_Group_translate_ranks(parep_mpi_original_group,1,&recvrank,current_group,&currank);
@@ -831,7 +928,7 @@ int failed_proc_check() {
 								swap_replicas = true;
 							}
 						} else {
-							printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+							//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 						}
 					}
 				} else {
@@ -865,12 +962,173 @@ int failed_proc_check() {
 							rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
 							swap_replicas = true;
 						} else {
-							printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+							//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 						}
 					}
 				}
 				pthread_mutex_unlock(&procmaplock);
 
+				if(swap_replicas) {
+					parep_mpi_swap_replicas = 1;
+					parep_mpi_trigger_swap_scheduled = 1;
+				} else {
+					_real_free(ctrmap);
+					_real_free(rtcmap);
+				}
+			} else if(cmd == CMD_INFORM_PREDICT_NODE) {
+				printf("%d: Got CMD_INFORM_PREDICT_NODE from rem_recv scheduling\n",getpid());
+				bool swap_replicas = false;
+				pthread_mutex_lock(&procmaplock);
+				ctrmap = (int *)_real_malloc(sizeof(int) * nC);
+				rtcmap = (int *)_real_malloc(sizeof(int) * nR);
+				int ranksize, currank, recvrank;
+				int *recvranks;
+				int *curranks;
+				bool *usedreps = (bool *)malloc(nR*sizeof(bool));
+				time_t curtimestamp;
+				msgsize = 0;
+				while((bytes_read = read(pfd.fd,(&ranksize)+msgsize, sizeof(int)-msgsize)) > 0) {
+					msgsize += bytes_read;
+					if(msgsize >= (sizeof(int))) break;
+				}
+				recvranks = (int *)malloc(ranksize*sizeof(int));
+				curranks = (int *)malloc(ranksize*sizeof(int));
+				msgsize = 0;
+				while((bytes_read = read(pfd.fd,((char *)recvranks)+msgsize, (ranksize*sizeof(int))-msgsize)) > 0) {
+					msgsize += bytes_read;
+					if(msgsize >= (ranksize*sizeof(int))) break;
+				}
+				msgsize = 0;
+				while((bytes_read = read(pfd.fd,(&curtimestamp)+msgsize, sizeof(time_t)-msgsize)) > 0) {
+					msgsize += bytes_read;
+					if(msgsize >= (sizeof(time_t))) break;
+				}
+				
+				if(parep_mpi_pred_list == NULL) {
+					parep_mpi_pred_list = (time_t *)_real_malloc(sizeof(time_t) * (parep_mpi_size));
+					for(int i = 0; i < parep_mpi_size; i++) {
+						parep_mpi_pred_list[i] = (time_t)-1;
+						if(i < nC) ctrmap[i] = cmpToRepMap[i];
+						if(i < nR) {
+							rtcmap[i] = repToCmpMap[i];
+							usedreps[i] = false;
+						}
+					}
+				} else {
+					for(int i = 0; i < parep_mpi_size; i++) {
+						if(parep_mpi_pred_list[i] != (time_t)-1) {
+							if(difftime(curtimestamp,parep_mpi_pred_list[i]) > 1800) {
+								parep_mpi_pred_list[i] = (time_t)-1;
+							}
+						}
+						if(i < nC) ctrmap[i] = cmpToRepMap[i];
+						if(i < nR) {
+							rtcmap[i] = repToCmpMap[i];
+							usedreps[i] = false;
+						}
+					}
+				}
+				
+				for(recvrank = 0; recvrank < ranksize; recvrank++) parep_mpi_pred_list[recvranks[recvrank]] = curtimestamp;
+				EMPI_Group current_group;
+				EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
+				EMPI_Group_translate_ranks(parep_mpi_original_group,ranksize,recvranks,current_group,curranks);
+				
+				for(int p = 0; p < ranksize; p++) {
+					currank = curranks[p];
+					if(currank < nC) {
+						bool has_replica = (cmpToRepMap[currank] != -1);
+						int reprank = -1;
+						int origreprank = -1;
+						bool replica_is_healthy = false;
+						if(has_replica) {
+							reprank = cmpToRepMap[currank] + nC;
+							EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+							replica_is_healthy = (parep_mpi_pred_list[origreprank] == (time_t)-1);
+						}
+						if(!has_replica || (has_replica && (!replica_is_healthy))) {
+							int newreprank = -1;
+							int oldcmprank = -1;
+							for(int k = 0; k < nR; k++) {
+								if(!usedreps[k]) {
+									int reprank = k+nC;
+									int cmprank = repToCmpMap[k];
+									int origreprank;
+									int origcmprank;
+									EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+									EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+									if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (cmprank != currank)) {
+										newreprank = k;
+										oldcmprank = repToCmpMap[k];
+										usedreps[k] = true;
+										break;
+									}
+								}
+							}
+							//assert(newreprank >= 0);
+							//assert(oldcmprank >= 0);
+							if((newreprank >= 0) && (oldcmprank >= 0)) {
+								if(!has_replica) {
+									ctrmap[currank] = newreprank;
+									rtcmap[newreprank] = currank;
+									ctrmap[oldcmprank] = -1;
+									swap_replicas = true;
+								} else if(!replica_is_healthy) {
+									ctrmap[currank] = newreprank;
+									rtcmap[newreprank] = currank;
+									ctrmap[oldcmprank] = cmpToRepMap[currank];
+									rtcmap[cmpToRepMap[currank]] = oldcmprank;
+									swap_replicas = true;
+								}
+							} else {
+								//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+							}
+						}
+					} else {
+						int reprank = currank;
+						int cmprank = repToCmpMap[reprank-nC];
+						int origcmprank;
+						int origreprank;
+						EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+						EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+						bool cmp_is_healthy = (parep_mpi_pred_list[origcmprank] == (time_t)-1);
+						if(!cmp_is_healthy) {
+							int newreprank = -1;
+							int oldcmprank = -1;
+							for(int k = 0; k < nR; k++) {
+								if(!usedreps[k]) {
+									int reprank = k+nC;
+									int cmprank = repToCmpMap[k];
+									int origreprank;
+									int origcmprank;
+									EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+									EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+									if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (reprank != currank)) {
+										newreprank = k;
+										oldcmprank = repToCmpMap[k];
+										usedreps[k] = true;
+										break;
+									}
+								}
+							}
+							if((newreprank >= 0) && (oldcmprank >= 0)) {
+								ctrmap[cmprank] = newreprank;
+								rtcmap[newreprank] = cmprank;
+								ctrmap[oldcmprank] = cmpToRepMap[cmprank];
+								rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
+								swap_replicas = true;
+							} else {
+								//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+							}
+						}
+					}
+				}
+				pthread_mutex_unlock(&procmaplock);
+				
+				free(curranks);
+				free(recvranks);
+				free(usedreps);
+				
 				if(swap_replicas) {
 					parep_mpi_swap_replicas = 1;
 					parep_mpi_trigger_swap_scheduled = 1;
@@ -1755,8 +2013,8 @@ void *polling_daemon(void *arg) {
 							if(i < nR) rtcmap[i] = repToCmpMap[i];
 						}
 					}
-					parep_mpi_pred_list[currank] = curtimestamp;
 					
+					parep_mpi_pred_list[recvrank] = curtimestamp;
 					EMPI_Group current_group;
 					EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
 					EMPI_Group_translate_ranks(parep_mpi_original_group,1,&recvrank,current_group,&currank);
@@ -1803,7 +2061,7 @@ void *polling_daemon(void *arg) {
 									swap_replicas = true;
 								}
 							} else {
-								printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+								//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 							}
 						}
 					} else {
@@ -1837,11 +2095,171 @@ void *polling_daemon(void *arg) {
 								rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
 								swap_replicas = true;
 							} else {
-								printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+								//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
 							}
 						}
 					}
 					pthread_mutex_unlock(&procmaplock);
+					
+					if(swap_replicas) {
+						parep_mpi_swap_replicas = 1;
+						pthread_kill(thread_tid[0],SIGUSR1);
+					} else {
+						_real_free(ctrmap);
+						_real_free(rtcmap);
+					}
+				} else if(cmd == CMD_INFORM_PREDICT_NODE) {
+					bool swap_replicas = false;
+					pthread_mutex_lock(&procmaplock);
+					ctrmap = (int *)_real_malloc(sizeof(int) * nC);
+					rtcmap = (int *)_real_malloc(sizeof(int) * nR);
+					int ranksize, currank, recvrank;
+					int *recvranks;
+					int *curranks;
+					bool *usedreps = (bool *)malloc(nR*sizeof(bool));
+					time_t curtimestamp;
+					msgsize = 0;
+					while((bytes_read = read(pfd.fd,(&ranksize)+msgsize, sizeof(int)-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (sizeof(int))) break;
+					}
+					recvranks = (int *)malloc(ranksize*sizeof(int));
+					curranks = (int *)malloc(ranksize*sizeof(int));
+					msgsize = 0;
+					while((bytes_read = read(pfd.fd,((char *)recvranks)+msgsize, (ranksize*sizeof(int))-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (ranksize*sizeof(int))) break;
+					}
+					msgsize = 0;
+					while((bytes_read = read(pfd.fd,(&curtimestamp)+msgsize, sizeof(time_t)-msgsize)) > 0) {
+						msgsize += bytes_read;
+						if(msgsize >= (sizeof(time_t))) break;
+					}
+					
+					if(parep_mpi_pred_list == NULL) {
+						parep_mpi_pred_list = (time_t *)_real_malloc(sizeof(time_t) * (parep_mpi_size));
+						for(int i = 0; i < parep_mpi_size; i++) {
+							parep_mpi_pred_list[i] = (time_t)-1;
+							if(i < nC) ctrmap[i] = cmpToRepMap[i];
+							if(i < nR) {
+								rtcmap[i] = repToCmpMap[i];
+								usedreps[i] = false;
+							}
+						}
+					} else {
+						for(int i = 0; i < parep_mpi_size; i++) {
+							if(parep_mpi_pred_list[i] != (time_t)-1) {
+								if(difftime(curtimestamp,parep_mpi_pred_list[i]) > 1800) {
+									parep_mpi_pred_list[i] = (time_t)-1;
+								}
+							}
+							if(i < nC) ctrmap[i] = cmpToRepMap[i];
+							if(i < nR) {
+								rtcmap[i] = repToCmpMap[i];
+								usedreps[i] = false;
+							}
+						}
+					}
+					
+					for(recvrank = 0; recvrank < ranksize; recvrank++) parep_mpi_pred_list[recvranks[recvrank]] = curtimestamp;
+					EMPI_Group current_group;
+					EMPI_Comm_group(MPI_COMM_WORLD->eworldComm,&current_group);
+					EMPI_Group_translate_ranks(parep_mpi_original_group,ranksize,recvranks,current_group,curranks);
+					
+					for(int p = 0; p < ranksize; p++) {
+						currank = curranks[p];
+						if(currank < nC) {
+							bool has_replica = (cmpToRepMap[currank] != -1);
+							int reprank = -1;
+							int origreprank = -1;
+							bool replica_is_healthy = false;
+							if(has_replica) {
+								reprank = cmpToRepMap[currank] + nC;
+								EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+								replica_is_healthy = (parep_mpi_pred_list[origreprank] == (time_t)-1);
+							}
+							if(!has_replica || (has_replica && (!replica_is_healthy))) {
+								int newreprank = -1;
+								int oldcmprank = -1;
+								for(int k = 0; k < nR; k++) {
+									if(!usedreps[k]) {
+										int reprank = k+nC;
+										int cmprank = repToCmpMap[k];
+										int origreprank;
+										int origcmprank;
+										EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+										EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+										if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (cmprank != currank)) {
+											newreprank = k;
+											oldcmprank = repToCmpMap[k];
+											usedreps[k] = true;
+											break;
+										}
+									}
+								}
+								//assert(newreprank >= 0);
+								//assert(oldcmprank >= 0);
+								if((newreprank >= 0) && (oldcmprank >= 0)) {
+									if(!has_replica) {
+										ctrmap[currank] = newreprank;
+										rtcmap[newreprank] = currank;
+										ctrmap[oldcmprank] = -1;
+										swap_replicas = true;
+									} else if(!replica_is_healthy) {
+										ctrmap[currank] = newreprank;
+										rtcmap[newreprank] = currank;
+										ctrmap[oldcmprank] = cmpToRepMap[currank];
+										rtcmap[cmpToRepMap[currank]] = oldcmprank;
+										swap_replicas = true;
+									}
+								} else {
+									//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+								}
+							}
+						} else {
+							int reprank = currank;
+							int cmprank = repToCmpMap[reprank-nC];
+							int origcmprank;
+							int origreprank;
+							EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+							EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+							bool cmp_is_healthy = (parep_mpi_pred_list[origcmprank] == (time_t)-1);
+							if(!cmp_is_healthy) {
+								int newreprank = -1;
+								int oldcmprank = -1;
+								for(int k = 0; k < nR; k++) {
+									if(!usedreps[k]) {
+										int reprank = k+nC;
+										int cmprank = repToCmpMap[k];
+										int origreprank;
+										int origcmprank;
+										EMPI_Group_translate_ranks(current_group,1,&reprank,parep_mpi_original_group,&origreprank);
+										EMPI_Group_translate_ranks(current_group,1,&cmprank,parep_mpi_original_group,&origcmprank);
+										if((parep_mpi_pred_list[origreprank] == (time_t)-1) && ((parep_mpi_pred_list[origcmprank] == (time_t)-1)) && (reprank != currank)) {
+											newreprank = k;
+											oldcmprank = repToCmpMap[k];
+											usedreps[k] = true;
+											break;
+										}
+									}
+								}
+								if((newreprank >= 0) && (oldcmprank >= 0)) {
+									ctrmap[cmprank] = newreprank;
+									rtcmap[newreprank] = cmprank;
+									ctrmap[oldcmprank] = cmpToRepMap[cmprank];
+									rtcmap[cmpToRepMap[cmprank]] = oldcmprank;
+									swap_replicas = true;
+								} else {
+									//printf("%d: newreprank %d oldcmprank %d Out of replicas currank %d\n",getpid(),newreprank,oldcmprank,currank);
+								}
+							}
+						}
+					}
+					pthread_mutex_unlock(&procmaplock);
+					
+					free(usedreps);
+					free(recvranks);
+					free(curranks);
 					
 					if(swap_replicas) {
 						parep_mpi_swap_replicas = 1;
@@ -2179,7 +2597,7 @@ void *polling_daemon(void *arg) {
 					if(myrank >= nC) {
 						for(int j = 0; j < nC+nR; j++) {
 							if((j != myrank) && (j != repToCmpMap[myrank-nC])) {
-								if(isProcAlive[j]) {
+								//if(isProcAlive[j]) {
 									int flag = 0;
 									EMPI_Status stat;
 									do {
@@ -2254,17 +2672,17 @@ void *polling_daemon(void *arg) {
 												
 												pthread_mutex_lock(&recvDataListLock);
 												recvDataListInsert(curargs);
-												pthread_cond_signal(&reqListCond);
+												pthread_cond_signal(&recvDataListCond);
 												pthread_mutex_unlock(&recvDataListLock);
 											}
 										}
 									} while(flag != 0);
-								}
+								//}
 							} else if((j < nC) && (j == repToCmpMap[myrank-nC])) {
-								if(isProcAlive[j]) {
+								//if(isProcAlive[j]) {
 									pthread_rwlock_unlock(&commLock);
 									do {
-										progressed = test_all_coll_requests();
+										progressed = test_all_requests();
 									} while(progressed);
 									pthread_rwlock_rdlock(&commLock);
 									int flag = 0;
@@ -2275,7 +2693,7 @@ void *polling_daemon(void *arg) {
 										if(flag) {
 											pthread_rwlock_unlock(&commLock);
 											do {
-												progressed = test_all_coll_requests();
+												progressed = test_all_requests();
 											} while(progressed);
 											pthread_rwlock_rdlock(&commLock);
 											EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
@@ -2287,107 +2705,139 @@ void *polling_daemon(void *arg) {
 											int extracount;
 											int size;
 											int tag = stat.EMPI_TAG;
-											assert((tag == MPI_FT_REDUCE_TAG) || (tag == MPI_FT_ALLREDUCE_TAG));
-											clcdata *curargs;
-											curargs = (clcdata *)parep_mpi_malloc(sizeof(clcdata));
-											EMPI_Type_size(EMPI_BYTE,&size);
-											EMPI_Get_count(&stat,EMPI_BYTE,&count);
-											if(size >= sizeof(int)) extracount = 1;
-											else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
-											else extracount = (((int)sizeof(int))/size) + 1;
-											count -= extracount;
-											curargs->completecmp = false;
-											curargs->completerep = false;
-											curargs->completecolls = NULL;
-											curargs->num_colls = 0;
-											curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
-											*(curargs->req) = MPI_REQUEST_NULL;
-											if(tag == MPI_FT_REDUCE_TAG) {
-												curargs->type = MPI_FT_REDUCE_TEMP;
-												(curargs->args).reduce.alloc_recvbuf = true;
-												(curargs->args).reduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
-												EMPI_Recv((curargs->args).reduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
-												memcpy(&(curargs->id),((curargs->args).reduce.recvbuf) + (count * size),sizeof(int));
+											assert((tag == MPI_FT_REDUCE_TAG) || (tag == MPI_FT_ALLREDUCE_TAG) || (MPI_FT_WILDCARD_RECV));
+											if(tag == MPI_FT_WILDCARD_TAG) {
+												ptpdata *curargs;
+												curargs = (ptpdata *)parep_mpi_malloc(sizeof(ptpdata));
+												EMPI_Get_count(&stat,EMPI_INT,&count);
+												assert(count == 3);
+												int *tempbuf = (int *)parep_mpi_malloc(3*sizeof(int));
+												EMPI_Recv(tempbuf,count,EMPI_INT,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
+												curargs->target = tempbuf[0];
+												curargs->tag = tempbuf[1];
+												curargs->id = tempbuf[2];
+												curargs->type = MPI_FT_WILDCARD_RECV;
+												parep_mpi_free(tempbuf);
+												curargs->comm = comm;
 												if((curargs->id & 0xF0000000) != 0x70000000) {
-													parep_mpi_free((curargs->args).reduce.recvbuf);
+													parep_mpi_free(curargs);
+												} else {
+													pthread_mutex_lock(&peertopeerLock);
+													if(last_peertopeer != NULL) last_peertopeer->prev = curargs;
+													else first_peertopeer = curargs;
+													curargs->prev = NULL;
+													curargs->next = last_peertopeer;
+													last_peertopeer = curargs;
+													pthread_cond_signal(&peertopeerCond);
+													pthread_mutex_unlock(&peertopeerLock);
+													
+													pthread_mutex_lock(&recvDataListLock);
+													recvDataListInsert((ptpdata *)curargs);
+													pthread_cond_signal(&recvDataListCond);
+													pthread_mutex_unlock(&recvDataListLock);
 												}
-												(curargs->args).reduce.comm = comm;
-											} else if(tag == MPI_FT_ALLREDUCE_TAG) {
-												curargs->type = MPI_FT_ALLREDUCE_TEMP;
-												(curargs->args).allreduce.alloc_recvbuf = true;
-												(curargs->args).allreduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
-												EMPI_Recv((curargs->args).allreduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
-												memcpy(&(curargs->id),((curargs->args).allreduce.recvbuf) + (count * size),sizeof(int));
-												if((curargs->id & 0xF0000000) != 0x70000000) {
-													parep_mpi_free((curargs->args).allreduce.recvbuf);
-												}
-												(curargs->args).allreduce.comm = comm;
-											}
-											
-											if((curargs->id & 0xF0000000) != 0x70000000) {
-												parep_mpi_free(curargs->req);
-												parep_mpi_free(curargs);
 											} else {
-												if(curargs->id < parep_mpi_collective_id) {
-													printf("%d: parep_mpi_rank %d Weird curargs->id %p parep_mpi_collective_id %p parep_mpi_sendid %p myrank %d repToCmpMap[myrank-nC] %d\n",getpid(),parep_mpi_rank,curargs->id,parep_mpi_collective_id,parep_mpi_sendid,myrank,repToCmpMap[myrank-nC]);
-													bool found = false;
-													clcdata *temp = last_collective;
-													clcdata *targ;
-													while(temp->next != NULL) {
-														temp = temp->next;
-														if(curargs->id == temp->id) {
-															found = true;
-															targ = temp;
-															break;
+												clcdata *curargs;
+												curargs = (clcdata *)parep_mpi_malloc(sizeof(clcdata));
+												EMPI_Type_size(EMPI_BYTE,&size);
+												EMPI_Get_count(&stat,EMPI_BYTE,&count);
+												if(size >= sizeof(int)) extracount = 1;
+												else if(((int)sizeof(int)) % size == 0) extracount = (((int)sizeof(int))/size);
+												else extracount = (((int)sizeof(int))/size) + 1;
+												count -= extracount;
+												curargs->completecmp = false;
+												curargs->completerep = false;
+												curargs->completecolls = NULL;
+												curargs->num_colls = 0;
+												curargs->req = (MPI_Request *)parep_mpi_malloc(sizeof(MPI_Request));
+												*(curargs->req) = MPI_REQUEST_NULL;
+												if(tag == MPI_FT_REDUCE_TAG) {
+													curargs->type = MPI_FT_REDUCE_TEMP;
+													(curargs->args).reduce.alloc_recvbuf = true;
+													(curargs->args).reduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
+													EMPI_Recv((curargs->args).reduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
+													memcpy(&(curargs->id),((curargs->args).reduce.recvbuf) + (count * size),sizeof(int));
+													if((curargs->id & 0xF0000000) != 0x70000000) {
+														parep_mpi_free((curargs->args).reduce.recvbuf);
+													}
+													(curargs->args).reduce.comm = comm;
+												} else if(tag == MPI_FT_ALLREDUCE_TAG) {
+													curargs->type = MPI_FT_ALLREDUCE_TEMP;
+													(curargs->args).allreduce.alloc_recvbuf = true;
+													(curargs->args).allreduce.recvbuf = parep_mpi_malloc((count+extracount)*size);
+													EMPI_Recv((curargs->args).allreduce.recvbuf,count+extracount,EMPI_BYTE,j,stat.EMPI_TAG,comm->EMPI_CMP_REP_INTERCOMM,&stat);
+													memcpy(&(curargs->id),((curargs->args).allreduce.recvbuf) + (count * size),sizeof(int));
+													if((curargs->id & 0xF0000000) != 0x70000000) {
+														parep_mpi_free((curargs->args).allreduce.recvbuf);
+													}
+													(curargs->args).allreduce.comm = comm;
+												}
+												
+												if((curargs->id & 0xF0000000) != 0x70000000) {
+													parep_mpi_free(curargs->req);
+													parep_mpi_free(curargs);
+												} else {
+													if(curargs->id < parep_mpi_collective_id) {
+														printf("%d: parep_mpi_rank %d Weird curargs->id %p parep_mpi_collective_id %p parep_mpi_sendid %p myrank %d repToCmpMap[myrank-nC] %d\n",getpid(),parep_mpi_rank,curargs->id,parep_mpi_collective_id,parep_mpi_sendid,myrank,repToCmpMap[myrank-nC]);
+														bool found = false;
+														clcdata *temp = last_collective;
+														clcdata *targ;
+														while(temp->next != NULL) {
+															temp = temp->next;
+															if(curargs->id == temp->id) {
+																found = true;
+																targ = temp;
+																break;
+															}
+														}
+														if(found) {
+															printf("%d: parep_mpi_rank %d Match found curargs->id %p parep_mpi_collective_id %p targ->id %p targ->completecmp %d targ->completerep %d targ->req %p\n",getpid(),parep_mpi_rank,curargs->id,parep_mpi_collective_id,targ->id,targ->completecmp,targ->completerep,targ->req);
+														} else {
+															printf("%d: parep_mpi_rank %d Match not found curargs->id %p parep_mpi_collective_id %p\n",getpid(),parep_mpi_rank,curargs->id,parep_mpi_collective_id);
+														}
+														while(1);
+													}
+													assert(curargs->id >= parep_mpi_collective_id);
+													pthread_mutex_lock(&collectiveLock);
+													if(last_collective == NULL) {
+														curargs->prev = NULL;
+														curargs->next = NULL;
+														last_collective = curargs;
+													} else {
+														clcdata *temp = last_collective;
+														while((curargs->id <= temp->id) && (temp->next != NULL)) {
+															temp = temp->next;
+														}
+														if(curargs->id > temp->id) {
+															curargs->prev = temp->prev;
+															curargs->next = temp;
+															if(temp->prev != NULL) temp->prev->next = curargs;
+															else last_collective = curargs;
+															temp->prev = curargs;
+														} else {
+															curargs->prev = temp;
+															curargs->next = NULL;
+															temp->next = curargs;
 														}
 													}
-													if(found) {
-														printf("%d: parep_mpi_rank %d Match found curargs->id %p parep_mpi_collective_id %p targ->id %p targ->completecmp %d targ->completerep %d targ->req %p\n",getpid(),parep_mpi_rank,curargs->id,parep_mpi_collective_id,targ->id,targ->completecmp,targ->completerep,targ->req);
-													} else {
-														printf("%d: parep_mpi_rank %d Match not found curargs->id %p parep_mpi_collective_id %p\n",getpid(),parep_mpi_rank,curargs->id,parep_mpi_collective_id);
-													}
-													while(1);
+													pthread_cond_signal(&collectiveCond);
+													pthread_mutex_unlock(&collectiveLock);
+													
+													pthread_mutex_lock(&recvDataListLock);
+													recvDataRedListInsert((ptpdata *)curargs);
+													pthread_cond_signal(&recvDataListCond);
+													pthread_mutex_unlock(&recvDataListLock);
 												}
-												assert(curargs->id >= parep_mpi_collective_id);
-												pthread_mutex_lock(&collectiveLock);
-												if(last_collective == NULL) {
-													curargs->prev = NULL;
-													curargs->next = NULL;
-													last_collective = curargs;
-												} else {
-													clcdata *temp = last_collective;
-													while((curargs->id <= temp->id) && (temp->next != NULL)) {
-														temp = temp->next;
-													}
-													if(curargs->id > temp->id) {
-														curargs->prev = temp->prev;
-														curargs->next = temp;
-														if(temp->prev != NULL) temp->prev->next = curargs;
-														else last_collective = curargs;
-														temp->prev = curargs;
-													} else {
-														curargs->prev = temp;
-														curargs->next = NULL;
-														temp->next = curargs;
-													}
-												}
-												pthread_cond_signal(&collectiveCond);
-												pthread_mutex_unlock(&collectiveLock);
-												
-												pthread_mutex_lock(&recvDataListLock);
-												recvDataRedListInsert((ptpdata *)curargs);
-												pthread_cond_signal(&reqListCond);
-												pthread_mutex_unlock(&recvDataListLock);
 											}
 										}
 									} while(flag != 0);
-								}
+								//}
 							}
 						}
 					} else {
 						for(int j = 0; j < nC; j++) {
 							if(j != myrank) {
-								if(isProcAlive[j]) {
+								//if(isProcAlive[j]) {
 									int flag = 0;
 									EMPI_Status stat;
 									do {
@@ -2458,12 +2908,12 @@ void *polling_daemon(void *arg) {
 												
 												pthread_mutex_lock(&recvDataListLock);
 												recvDataListInsert(curargs);
-												pthread_cond_signal(&reqListCond);
+												pthread_cond_signal(&recvDataListCond);
 												pthread_mutex_unlock(&recvDataListLock);
 											}
 										}
 									} while(flag != 0);
-								}
+								//}
 							}
 						}
 					}
@@ -2528,6 +2978,14 @@ void *polling_daemon(void *arg) {
 					_real_free(rankadjrep);
 					_real_free(abs_failed_ranks);
 					_real_free(failed_ranks);
+					
+					/*for(fhNode *fhn = fhHead; fhn != NULL; fhn = fhn->next) {
+						MPI_File curfile = fhn->fh;
+						EMPI_File_close(&(curfile->efh));
+						EMPI_File_close(&(curfile->rdfh));
+						EMPI_File_close(&(curfile->pairfh));
+						EMPI_File_close(&(curfile->repfh));
+					}*/
 					
 					int active_thread;
 					int shrink_perf;
@@ -2618,6 +3076,7 @@ void *polling_daemon(void *arg) {
 								else colorinternal = 1;
 								EMPI_Comm_split (MPI_COMM_WORLD->EMPI_COMM_CMP, colorinternal, 0, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
 								if(MPI_COMM_WORLD->EMPI_CMP_NO_REP != EMPI_COMM_NULL) EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_CMP_NO_REP, 0, MPI_COMM_WORLD->eworldComm, repLeader, 101, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM));
+								EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, newrank, 0, &(MPI_COMM_WORLD->pairComm));
 								MPI_COMM_WORLD->EMPI_COMM_REP = EMPI_COMM_NULL;
 							} else if (color == 1) {
 								EMPI_Comm_split (MPI_COMM_WORLD->eworldComm, color, 0, &(MPI_COMM_WORLD->EMPI_COMM_REP));
@@ -2632,11 +3091,16 @@ void *polling_daemon(void *arg) {
 									}
 									EMPI_Intercomm_create (MPI_COMM_WORLD->EMPI_COMM_REP, 0, MPI_COMM_WORLD->eworldComm, rleader, 101, &(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM));
 								}
+								EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, repToCmpMap[newrank-nC], 0, &(MPI_COMM_WORLD->pairComm));
 								MPI_COMM_WORLD->EMPI_COMM_CMP = EMPI_COMM_NULL;
 							}
 						} else {
 							EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_COMM_CMP));
+							MPI_COMM_WORLD->EMPI_COMM_REP = EMPI_COMM_NULL;
+							MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM = EMPI_COMM_NULL;
 							EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
+							MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM = EMPI_COMM_NULL;
+							EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, newrank, 0, &(MPI_COMM_WORLD->pairComm));
 						}
 						pthread_join(comm_shrinker,NULL);
 						printf("%d: Shrink completed newrank %d parep_mpi_rank %d new leader rank %d mean %f std %f\n",getpid(),newrank,parep_mpi_rank,parep_mpi_leader_rank,parep_mpi_pred_mean,parep_mpi_pred_std);

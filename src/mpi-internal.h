@@ -113,12 +113,61 @@ int (*EMPI_Probe)(int,int,EMPI_Comm,EMPI_Status *);
 int (*EMPI_Iprobe)(int,int,EMPI_Comm,int *,EMPI_Status *);
 int (*EMPI_Request_free)(EMPI_Request *);
 int (*EMPI_Type_size)(EMPI_Datatype,int *);
+int (*EMPI_Type_get_extent)(EMPI_Datatype, EMPI_Aint *, EMPI_Aint *);
 int (*EMPI_Get_count)(EMPI_Status *,EMPI_Datatype,int *);
 double (*EMPI_Wtime)();
+
+int (*EMPI_File_open)(EMPI_Comm, const char *, int, EMPI_Info, EMPI_File *);
+int (*EMPI_File_close)(EMPI_File *);
+int (*EMPI_File_set_view)(EMPI_File, EMPI_Offset, EMPI_Datatype, EMPI_Datatype, const char *, EMPI_Info);
+int (*EMPI_File_get_view)(EMPI_File, EMPI_Offset *, EMPI_Datatype *, EMPI_Datatype *, char *);
+int (*EMPI_File_seek)(EMPI_File, EMPI_Offset, int);
+int (*EMPI_File_seek_shared)(EMPI_File, EMPI_Offset, int);
+int (*EMPI_File_read_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_ordered)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_read_ordered_begin)(EMPI_File, void *, int, EMPI_Datatype);
+int (*EMPI_File_read_ordered_end)(EMPI_File, void *, EMPI_Status *);
+int (*EMPI_File_write_ordered)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_write_ordered_begin)(EMPI_File, const void *, int, EMPI_Datatype);
+int (*EMPI_File_write_ordered_end)(EMPI_File, const void *, EMPI_Status *);
+int (*EMPI_File_get_position)(EMPI_File, EMPI_Offset *);
+int (*EMPI_File_get_position_shared)(EMPI_File, EMPI_Offset *);
+
+int (*EMPI_Type_commit)(EMPI_Datatype *);
+int (*EMPI_Type_free)(EMPI_Datatype *);
+int (*EMPI_Type_contiguous)(int, EMPI_Datatype, EMPI_Datatype *);
+int (*EMPI_Type_vector)(int, int, int, EMPI_Datatype, EMPI_Datatype *);
+int (*EMPI_Type_create_resized)(EMPI_Datatype, EMPI_Aint, EMPI_Aint, EMPI_Datatype *);
+int (*EMPI_Type_create_subarray)(int, const int *, const int *, const int *, int, EMPI_Datatype, EMPI_Datatype *);
+
+int (*EMPI_File_sync)(EMPI_File fh);
+int (*EMPI_File_delete)(const char *, EMPI_Info);
+int (*EMPI_Get_processor_name)(char *, int *);
 
 static FILE *logfile;
 static EMPI_Comm eworldComm;
 static EMPI_Comm EMPI_COMM_CMP, EMPI_COMM_REP, EMPI_CMP_REP_INTERCOMM;
+static MPI_Datatype read_ordered_datatype, write_ordered_datatype;
+static MPI_Request read_request, write_request, read_at_request, write_at_request;
 int *repToCmpMap, *cmpToRepMap;
 //extern int *repToCmpMap, *cmpToRepMap;
 //static char *workDir = "/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi", *repState = "repState";
@@ -271,7 +320,14 @@ enum comm_type {
 	MPI_FT_ALLREDUCE,
 	MPI_FT_ALLTOALLV,
 	MPI_FT_REDUCE_TEMP,
-	MPI_FT_ALLREDUCE_TEMP
+	MPI_FT_ALLREDUCE_TEMP,
+	MPI_FT_WILDCARD_RECV
+};
+
+enum dt_type {
+	MPI_FT_CONTIG,
+	MPI_FT_VECTOR,
+	MPI_FT_SUBARRAY
 };
 
 struct collective_data {
@@ -372,7 +428,17 @@ void mpi_ft_free_older_collectives(struct collective_data *);
 enum mpi_ft_request_type {
 	MPI_FT_SEND_REQUEST,
 	MPI_FT_RECV_REQUEST,
-	MPI_FT_COLLECTIVE_REQUEST
+	MPI_FT_COLLECTIVE_REQUEST,
+	MPI_FT_READ_REQUEST,
+	MPI_FT_WRITE_REQUEST,
+	MPI_FT_READ_AT_REQUEST,
+	MPI_FT_WRITE_AT_REQUEST,
+	MPI_FT_READ_SHARED_REQUEST,
+	MPI_FT_WRITE_SHARED_REQUEST,
+	MPI_FT_READ_ALL_REQUEST,
+	MPI_FT_WRITE_ALL_REQUEST,
+	MPI_FT_READ_AT_ALL_REQUEST,
+	MPI_FT_WRITE_AT_ALL_REQUEST
 };
 
 void parep_mpi_send_replication_data(int);
@@ -405,9 +471,12 @@ void initialize_mpi_variables();
 int empi_comm_creation(int *,int *,int *,char ***,bool);
 void initialize_common_heap_and_stack(int);
 
+#define MPI_FT_WILDCARD_TAG 102535
 #define MPI_FT_COLLECTIVE_TAG 102536
 #define MPI_FT_REDUCE_TAG MPI_FT_COLLECTIVE_TAG+1
 #define MPI_FT_ALLREDUCE_TAG MPI_FT_COLLECTIVE_TAG+2
+#define MPI_FT_IOINFO_TAG MPI_FT_COLLECTIVE_TAG+3
+#define MPI_FT_IODATA_TAG MPI_FT_COLLECTIVE_TAG+4
 
 #define PAREP_MPI_COORDINATOR_SOCK_NUM 500
 #define PAREP_MPI_IB_SHMEM_FD 501

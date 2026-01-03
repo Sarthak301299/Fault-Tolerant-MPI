@@ -21,6 +21,7 @@
 #define CMD_REM_RECV_FINISHED 21
 #define CMD_INFORM_PREDICT 30
 #define CMD_BLOCK_PREDICT 31
+#define CMD_INFORM_PREDICT_NODE 34
 
 struct parep_mpi_recv_data_list_node {
 	ptpdata *pdata;
@@ -54,6 +55,8 @@ static EMPI_Group parep_mpi_failed_group = EMPI_GROUP_EMPTY;
 void recvDataListInsert(ptpdata *);
 void recvDataListDelete(recvDataNode *);
 recvDataNode *recvDataListFind(int,int,MPI_Comm);
+recvDataNode *recvDataListFindWithId(int,int,int,MPI_Comm);
+recvDataNode *recvDataListFindWildCard(int,MPI_Comm);
 
 void recvDataRedListInsert(ptpdata *);
 void recvDataRedListDelete(recvDataNode *);

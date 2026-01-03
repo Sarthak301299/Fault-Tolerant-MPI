@@ -60,7 +60,7 @@ extern pthread_cond_t entered_sighandler_cond;
 extern void *parep_mpi_ext_heap_mapping;
 extern size_t parep_mpi_ext_heap_size;
 
-extern void test_all_requests();
+extern bool test_all_requests();
 
 extern pthread_rwlock_t commLock;
 extern pthread_rwlock_t fgroupLock;
@@ -133,6 +133,8 @@ char *(*_real_strdup)(const char *) = NULL;
 char *(*_real_strndup)(const char *,size_t) = NULL;
 char *(*_real_realpath)(const char *,char *) = NULL;
 struct mallinfo (*_real_mallinfo)(void) = NULL;
+
+void (*_real_gfortran_st_write_done)(void *) = NULL;
 
 void (*_ext_free)(void *) = NULL;
 void *(*_ext_malloc)(size_t) = NULL;
@@ -571,6 +573,23 @@ char *realpath(const char *path, char *resolved_path) {
 	return retval;
 }
 
+void _gfortran_st_write_done(void *unit) {
+	if(_real_gfortran_st_write_done == NULL) _real_gfortran_st_write_done = dlsym(RTLD_NEXT,"_gfortran_st_write_done");
+	if((pthread_self() == thread_tid[0]) && (!parep_mpi_internal_call)) parep_mpi_sighandling_state = 1;
+	PAREP_MPI_DISABLE_CKPT();
+	_real_gfortran_st_write_done(unit);
+	PAREP_MPI_ENABLE_CKPT();
+	if((pthread_self() == thread_tid[0]) && (!parep_mpi_internal_call)) {
+			if(parep_mpi_sighandling_state == 2) {
+			parep_mpi_sighandling_state = 0;
+			parep_mpi_ckpt_wait = 1;
+			pthread_kill(pthread_self(),SIGUSR1);
+			while(parep_mpi_ckpt_wait) {;}
+		}
+		parep_mpi_sighandling_state = 0;
+	}
+}
+
 void *memalign(size_t boundary, size_t size)
 {
 	if(_real_memalign == NULL) _real_memalign = dlsym(RTLD_NEXT,"memalign");
@@ -772,7 +791,7 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 									
 									pthread_mutex_lock(&recvDataListLock);
 									recvDataListInsert(curargs);
-									pthread_cond_signal(&reqListCond);
+									pthread_cond_signal(&recvDataListCond);
 									pthread_mutex_unlock(&recvDataListLock);
 								}
 							}
@@ -852,7 +871,7 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 									
 									pthread_mutex_lock(&recvDataListLock);
 									recvDataListInsert(curargs);
-									pthread_cond_signal(&reqListCond);
+									pthread_cond_signal(&recvDataListCond);
 									pthread_mutex_unlock(&recvDataListLock);
 								}
 							}

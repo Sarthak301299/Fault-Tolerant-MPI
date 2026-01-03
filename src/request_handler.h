@@ -18,9 +18,13 @@ reqNode *reqListInsert(MPI_Request);
 void reqListDelete(reqNode *);
 bool reqListIsEmpty();
 
+fhNode *fhListInsert(MPI_File);
+void fhListDelete(fhNode *);
+bool fhListIsEmpty();
+
 bool test_all_coll_requests();
 bool test_all_ptp_requests();
-void test_all_requests();
+bool test_all_requests();
 void test_all_requests_no_lock();
 
 int probe_msg_from_source(MPI_Comm, int);

@@ -37,6 +37,9 @@
 #define CMD_INFORM_FINALIZE_REACHED 29
 #define CMD_INFORM_PREDICT 30
 #define CMD_BLOCK_PREDICT 31
+#define CMD_CHECK_NODE_FAIL 32
+#define CMD_GET_NGROUP_LEADER 33
+#define CMD_INFORM_PREDICT_NODE 34
 
 int PAREP_MPI_NODE_GROUP_SIZE_MAX = 32;
 
@@ -139,6 +142,7 @@ qp_pair_t *qp_map[QP_HASH_KEYS];
 
 pthread_t main_thread;
 pthread_t empi_thread;
+pthread_t empi_exec_thread;
 pthread_t exit_thread;
 pthread_t server_poller;
 pthread_t thread_pool[THREAD_POOL_SIZE];
@@ -257,8 +261,10 @@ int *parep_mpi_node_group_nodesizes;
 pid_t *parep_mpi_pids;
 pid_t *parep_mpi_global_pids;
 int *parep_mpi_ranks;
+int *parep_mpi_all_ranks;
 
 pid_t parep_mpi_empi_pid;
+pid_t parep_mpi_empi_exec_pid = (pid_t)-1;
 
 rlims *rank_lims_all;
 rlims rank_lims;
@@ -272,10 +278,13 @@ int daemon_server_socket;
 int *client_socket;
 int empi_socket;
 int empi_client_socket;
+int empi_exec_socket;
+int empi_exec_client_socket;
 
 pthread_mutex_t client_sock_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t daemon_sock_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+int parep_mpi_reconf_ngroup = 0;
 pthread_mutex_t proc_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t proc_state_cond = PTHREAD_COND_INITIALIZER;
 int *local_proc_state;
@@ -356,8 +365,10 @@ bool *recv_rank;
 
 pthread_mutex_t parep_mpi_inform_failed_mutex = PTHREAD_MUTEX_INITIALIZER;
 int parep_mpi_num_inform_failed = 0;
+int parep_mpi_node_group_leader_nodeid = 0;
 int *parep_mpi_num_inform_failed_node;
 int *parep_mpi_num_inform_failed_node_group;
+int *parep_mpi_node_group_leader_nodeids;
 bool *parep_mpi_inform_failed_check;
 int parep_mpi_performing_barrier = 0;
 
@@ -384,5 +395,11 @@ pthread_cond_t rem_recv_running_cond = PTHREAD_COND_INITIALIZER;
 int parep_mpi_block_predict = 0;
 pthread_mutex_t parep_mpi_block_predict_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t parep_mpi_block_predict_cond = PTHREAD_COND_INITIALIZER;
+
+int parep_mpi_node_group_checked = 0;
+int parep_mpi_num_nodes_failed = 0;
+bool waiting_for_node_fail_detect = false;
+pthread_mutex_t parep_mpi_node_group_checked_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t parep_mpi_node_group_checked_cond = PTHREAD_COND_INITIALIZER;
 
 #endif

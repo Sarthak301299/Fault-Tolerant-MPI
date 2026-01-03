@@ -16,11 +16,48 @@
 extern char **environ;
 int main(int argc, char **argv) {
 	char path[4096];
+	char node_file[4096];
 	bool isHeadNode;
+	sprintf(node_file,"%s/checkpoint/pbs_nodes%s",getenv("PAREP_MPI_BASE_WORKDIR"),getenv("SLURM_JOB_ID"));
 	int parep_mpi_size = atoi(getenv("PAREP_MPI_SIZE"));
 	int parep_mpi_node_num = atoi(getenv("PAREP_MPI_NODE_NUM"));
 	int parep_mpi_node_size = atoi(getenv("PAREP_MPI_NODE_SIZE"));
-	int parep_mpi_node_id = atoi(getenv("SLURM_NODEID"));
+	int parep_mpi_node_id = 0;
+	
+	char host_name[256];
+	int thname = gethostname(host_name,sizeof(host_name));
+	if(thname == -1) {
+		perror("gethostname");
+		exit(1);
+	}
+	
+	FILE *nf = fopen(node_file,"r");
+	assert(nf != NULL);
+	char prevline[256];
+	prevline[0] = '\0';
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t nread;
+	while ((nread = getline(&line, &len, nf)) != -1) {
+		if(strcmp(line,prevline)) {
+			if (nread > 0 && line[nread-1] == '\n') {
+				line[nread-1] = '\0';
+				if(!strcmp(line,host_name)) {
+					break;
+				}
+				line[nread-1] = '\n';
+			} else if(!strcmp(line,host_name)) {
+				break;
+			}
+			parep_mpi_node_id++;
+		}
+		strcpy(prevline,line);
+	}
+	free(line);
+	line = NULL;
+	fclose(nf);
+	assert(parep_mpi_node_id < parep_mpi_node_num);
+	
 	if(parep_mpi_node_id == (parep_mpi_node_num-1)) {
 		if(parep_mpi_size < (parep_mpi_node_size*parep_mpi_node_num)) {
 			parep_mpi_node_size = parep_mpi_node_size - ((parep_mpi_node_size*parep_mpi_node_num) - parep_mpi_size);
@@ -36,13 +73,6 @@ int main(int argc, char **argv) {
 	//setenv("PAREP_MPI_PATH",path,1);
 	//sprintf(path,"/scratch/cdsjsar/checkpoint/%s",getenv("SLURM_JOB_ID"));
 	//setenv("PAREP_MPI_WORKDIR",path,1);
-	
-	char host_name[HOST_NAME_MAX+1];
-	int thname = gethostname(host_name,sizeof(host_name));
-	if(thname == -1) {
-		perror("gethostname");
-		exit(1);
-	}
 	
 	if(strcmp(host_name,getenv("PAREP_MPI_HEAD_NODE")) == 0) {
 		assert(parep_mpi_node_id == 0);

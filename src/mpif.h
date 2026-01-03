@@ -46,8 +46,10 @@ module mpif
 				integer,parameter :: MPI_SHORT_INT = 23
 				integer,parameter :: MPI_2INT = 24
 				integer,parameter :: MPI_LONG_DOUBLE_INT = 25
-				integer,parameter :: MPI_COMPLEX = 26
-				integer,parameter :: MPI_DOUBLE_COMPLEX = 27
+				!integer,parameter :: MPI_COMPLEX = 26
+				integer,parameter :: MPI_COMPLEX = 56
+				!integer,parameter :: MPI_DOUBLE_COMPLEX = 27
+				integer,parameter :: MPI_DOUBLE_COMPLEX = 57
 				integer,parameter :: MPI_LOGICAL = 28
 				!integer,parameter :: MPI_REAL = 29
 				integer,parameter :: MPI_REAL = 12
@@ -62,6 +64,9 @@ module mpif
 				!integer,parameter :: MPI_REAL4 = 36
 				!integer,parameter :: MPI_REAL8 = 37
 				!integer,parameter :: MPI_REAL16 = 38
+				!integer,parameter :: MPI_REAL4 = 12
+				!integer,parameter :: MPI_REAL8 = 12
+				!integer,parameter :: MPI_REAL16 = 12
 				!integer,parameter :: MPI_COMPLEX8 = 39
 				!integer,parameter :: MPI_COMPLEX16 = 40
 				!integer,parameter :: MPI_COMPLEX32 = 41
