@@ -40,6 +40,7 @@
 #include <linux/futex.h>
 #include <link.h>
 #include <ucontext.h>
+#include <sys/time.h>
 
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
@@ -63,118 +64,124 @@ void *__wrap_malloc(size_t size);
 
 #define PAREP_MPI_SAFE_FD 820
 
-int (*EMPI_Init)(int *, char ***);
-int (*EMPI_Finalize)();
-int (*EMPI_Comm_size)(EMPI_Comm,int *);
-int (*EMPI_Comm_remote_size)(EMPI_Comm,int *);
-int (*EMPI_Comm_rank)(EMPI_Comm,int *);
-int (*EMPI_Send)(void *,int,EMPI_Datatype,int,int,EMPI_Comm);
-int (*EMPI_Recv)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Status *);
-int (*EMPI_Comm_free)(EMPI_Comm *);
-int (*EMPI_Comm_dup)(EMPI_Comm,EMPI_Comm *);
-int (*EMPI_Comm_spawn)(const char *,char **,int,EMPI_Info,int,EMPI_Comm,int *);
-int (*EMPI_Barrier)(EMPI_Comm);
-int (*EMPI_Abort)(EMPI_Comm,int);
-int (*EMPI_Comm_group)(EMPI_Comm,EMPI_Group *);
-int (*EMPI_Group_size)(EMPI_Group,int *);
-int (*EMPI_Group_incl)(EMPI_Group,int,int *,EMPI_Group *);
-int (*EMPI_Group_union)(EMPI_Group,EMPI_Group,EMPI_Group *);
-int (*EMPI_Group_intersection)(EMPI_Group,EMPI_Group,EMPI_Group *);
-int (*EMPI_Group_difference)(EMPI_Group,EMPI_Group,EMPI_Group *);
-int (*EMPI_Group_translate_ranks)(EMPI_Group,int,int *,EMPI_Group,int *);
-int (*EMPI_Comm_create_group)(EMPI_Comm,EMPI_Group,int,EMPI_Comm *);
-int (*EMPI_Comm_split)(EMPI_Comm,int,int,EMPI_Comm *);
-int (*EMPI_Intercomm_create)(EMPI_Comm,int,EMPI_Comm,int,int,EMPI_Comm *);
-int (*EMPI_Comm_set_name)(EMPI_Comm,const char *);
-int (*EMPI_Bcast)(void *,int,EMPI_Datatype,int,EMPI_Comm);
-int (*EMPI_Allgather)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm);
-int (*EMPI_Alltoall)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm);
-int (*EMPI_Allgatherv)(void *,int,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm);
-int (*EMPI_Alltoallv)(void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm);
-int (*EMPI_Allreduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,EMPI_Comm);
-int (*EMPI_Isend)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Irecv)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Ibcast)(void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Iscatter)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Iscatterv)(const void *,int *,int *,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Igather)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Igatherv)(const void *,int,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Ireduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,int,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Iallgather)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Iallgatherv)(const void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Ialltoall)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Ialltoallv)(void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Iallreduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,EMPI_Comm,EMPI_Request *);
-int (*EMPI_Ibarrier)(EMPI_Comm,EMPI_Request *);
-int (*EMPI_Test)(EMPI_Request *,int *,EMPI_Status *);
-int (*EMPI_Wait)(EMPI_Request *,EMPI_Status *);
-int (*EMPI_Cancel)(EMPI_Request *);
-int (*EMPI_Probe)(int,int,EMPI_Comm,EMPI_Status *);
-int (*EMPI_Iprobe)(int,int,EMPI_Comm,int *,EMPI_Status *);
-int (*EMPI_Request_free)(EMPI_Request *);
-int (*EMPI_Type_size)(EMPI_Datatype,int *);
-int (*EMPI_Type_get_extent)(EMPI_Datatype, EMPI_Aint *, EMPI_Aint *);
-int (*EMPI_Get_count)(EMPI_Status *,EMPI_Datatype,int *);
-double (*EMPI_Wtime)();
+extern int (*EMPI_Init)(int *, char ***);
+extern int (*EMPI_Finalize)();
+extern int (*EMPI_Comm_size)(EMPI_Comm,int *);
+extern int (*EMPI_Comm_remote_size)(EMPI_Comm,int *);
+extern int (*EMPI_Comm_rank)(EMPI_Comm,int *);
+extern int (*EMPI_Send)(void *,int,EMPI_Datatype,int,int,EMPI_Comm);
+extern int (*EMPI_Recv)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Status *);
+extern int (*EMPI_Comm_free)(EMPI_Comm *);
+extern int (*EMPI_Comm_dup)(EMPI_Comm,EMPI_Comm *);
+extern int (*EMPI_Comm_spawn)(const char *,char **,int,EMPI_Info,int,EMPI_Comm,int *);
+extern int (*EMPI_Barrier)(EMPI_Comm);
+extern int (*EMPI_Abort)(EMPI_Comm,int);
+extern int (*EMPI_Comm_group)(EMPI_Comm,EMPI_Group *);
+extern int (*EMPI_Group_size)(EMPI_Group,int *);
+extern int (*EMPI_Group_incl)(EMPI_Group,int,int *,EMPI_Group *);
+extern int (*EMPI_Group_union)(EMPI_Group,EMPI_Group,EMPI_Group *);
+extern int (*EMPI_Group_intersection)(EMPI_Group,EMPI_Group,EMPI_Group *);
+extern int (*EMPI_Group_difference)(EMPI_Group,EMPI_Group,EMPI_Group *);
+extern int (*EMPI_Group_translate_ranks)(EMPI_Group,int,int *,EMPI_Group,int *);
+extern int (*EMPI_Comm_create_group)(EMPI_Comm,EMPI_Group,int,EMPI_Comm *);
+extern int (*EMPI_Comm_split)(EMPI_Comm,int,int,EMPI_Comm *);
+extern int (*EMPI_Intercomm_create)(EMPI_Comm,int,EMPI_Comm,int,int,EMPI_Comm *);
+extern int (*EMPI_Comm_set_name)(EMPI_Comm,const char *);
+extern int (*EMPI_Bcast)(void *,int,EMPI_Datatype,int,EMPI_Comm);
+extern int (*EMPI_Allgather)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm);
+extern int (*EMPI_Alltoall)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm);
+extern int (*EMPI_Allgatherv)(void *,int,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm);
+extern int (*EMPI_Alltoallv)(void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm);
+extern int (*EMPI_Allreduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,EMPI_Comm);
+extern int (*EMPI_Isend)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Irecv)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Ibcast)(void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Iscatter)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Iscatterv)(const void *,int *,int *,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Igather)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Igatherv)(const void *,int,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Ireduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,int,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Iallgather)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Iallgatherv)(const void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Ialltoall)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Ialltoallv)(void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Iallreduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Ibarrier)(EMPI_Comm,EMPI_Request *);
+extern int (*EMPI_Test)(EMPI_Request *,int *,EMPI_Status *);
+extern int (*EMPI_Wait)(EMPI_Request *,EMPI_Status *);
+extern int (*EMPI_Cancel)(EMPI_Request *);
+extern int (*EMPI_Probe)(int,int,EMPI_Comm,EMPI_Status *);
+extern int (*EMPI_Iprobe)(int,int,EMPI_Comm,int *,EMPI_Status *);
+extern int (*EMPI_Request_free)(EMPI_Request *);
+extern int (*EMPI_Type_size)(EMPI_Datatype,int *);
+extern int (*EMPI_Type_get_extent)(EMPI_Datatype, EMPI_Aint *, EMPI_Aint *);
+extern int (*EMPI_Get_count)(EMPI_Status *,EMPI_Datatype,int *);
+extern double (*EMPI_Wtime)();
 
-int (*EMPI_File_open)(EMPI_Comm, const char *, int, EMPI_Info, EMPI_File *);
-int (*EMPI_File_close)(EMPI_File *);
-int (*EMPI_File_set_view)(EMPI_File, EMPI_Offset, EMPI_Datatype, EMPI_Datatype, const char *, EMPI_Info);
-int (*EMPI_File_get_view)(EMPI_File, EMPI_Offset *, EMPI_Datatype *, EMPI_Datatype *, char *);
-int (*EMPI_File_seek)(EMPI_File, EMPI_Offset, int);
-int (*EMPI_File_seek_shared)(EMPI_File, EMPI_Offset, int);
-int (*EMPI_File_read_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iread_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_write_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iwrite_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_read)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iread)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_write)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iwrite)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_read_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iread_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_write_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iwrite_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_read_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iread_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_write_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iwrite_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_read_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iread_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_write_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_iwrite_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
-int (*EMPI_File_read_ordered)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_read_ordered_begin)(EMPI_File, void *, int, EMPI_Datatype);
-int (*EMPI_File_read_ordered_end)(EMPI_File, void *, EMPI_Status *);
-int (*EMPI_File_write_ordered)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
-int (*EMPI_File_write_ordered_begin)(EMPI_File, const void *, int, EMPI_Datatype);
-int (*EMPI_File_write_ordered_end)(EMPI_File, const void *, EMPI_Status *);
-int (*EMPI_File_get_position)(EMPI_File, EMPI_Offset *);
-int (*EMPI_File_get_position_shared)(EMPI_File, EMPI_Offset *);
+extern int (*EMPI_File_open)(EMPI_Comm, const char *, int, EMPI_Info, EMPI_File *);
+extern int (*EMPI_File_close)(EMPI_File *);
+extern int (*EMPI_File_set_view)(EMPI_File, EMPI_Offset, EMPI_Datatype, EMPI_Datatype, const char *, EMPI_Info);
+extern int (*EMPI_File_get_view)(EMPI_File, EMPI_Offset *, EMPI_Datatype *, EMPI_Datatype *, char *);
+extern int (*EMPI_File_seek)(EMPI_File, EMPI_Offset, int);
+extern int (*EMPI_File_seek_shared)(EMPI_File, EMPI_Offset, int);
+extern int (*EMPI_File_read_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iread_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_write_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iwrite_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_read)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iread)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_write)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iwrite)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_read_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iread_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_write_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iwrite_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_read_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iread_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_write_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iwrite_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_read_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iread_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_write_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_iwrite_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+extern int (*EMPI_File_read_ordered)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_read_ordered_begin)(EMPI_File, void *, int, EMPI_Datatype);
+extern int (*EMPI_File_read_ordered_end)(EMPI_File, void *, EMPI_Status *);
+extern int (*EMPI_File_write_ordered)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+extern int (*EMPI_File_write_ordered_begin)(EMPI_File, const void *, int, EMPI_Datatype);
+extern int (*EMPI_File_write_ordered_end)(EMPI_File, const void *, EMPI_Status *);
+extern int (*EMPI_File_get_position)(EMPI_File, EMPI_Offset *);
+extern int (*EMPI_File_get_position_shared)(EMPI_File, EMPI_Offset *);
 
-int (*EMPI_Type_commit)(EMPI_Datatype *);
-int (*EMPI_Type_free)(EMPI_Datatype *);
-int (*EMPI_Type_contiguous)(int, EMPI_Datatype, EMPI_Datatype *);
-int (*EMPI_Type_vector)(int, int, int, EMPI_Datatype, EMPI_Datatype *);
-int (*EMPI_Type_create_resized)(EMPI_Datatype, EMPI_Aint, EMPI_Aint, EMPI_Datatype *);
-int (*EMPI_Type_create_subarray)(int, const int *, const int *, const int *, int, EMPI_Datatype, EMPI_Datatype *);
+extern int (*EMPI_Type_commit)(EMPI_Datatype *);
+extern int (*EMPI_Type_free)(EMPI_Datatype *);
+extern int (*EMPI_Type_contiguous)(int, EMPI_Datatype, EMPI_Datatype *);
+extern int (*EMPI_Type_vector)(int, int, int, EMPI_Datatype, EMPI_Datatype *);
+extern int (*EMPI_Type_create_resized)(EMPI_Datatype, EMPI_Aint, EMPI_Aint, EMPI_Datatype *);
+extern int (*EMPI_Type_create_subarray)(int, const int *, const int *, const int *, int, EMPI_Datatype, EMPI_Datatype *);
 
-int (*EMPI_File_sync)(EMPI_File fh);
-int (*EMPI_File_delete)(const char *, EMPI_Info);
-int (*EMPI_Get_processor_name)(char *, int *);
+extern int (*EMPI_File_sync)(EMPI_File fh);
+extern int (*EMPI_File_delete)(const char *, EMPI_Info);
+extern int (*EMPI_Get_processor_name)(char *, int *);
+
+extern int (*EMPI_Pack)(const void *, int, EMPI_Datatype, void *, int, int *, EMPI_Comm);
+extern int (*EMPI_Unpack)(const void *, int, int *, void *, int, EMPI_Datatype, EMPI_Comm);
+
+extern int (*EMPI_Comm_set_errhandler)(EMPI_Comm, EMPI_Errhandler);
+extern int (*EMPI_File_set_errhandler)(EMPI_File, EMPI_Errhandler);
 
 static FILE *logfile;
 static EMPI_Comm eworldComm;
 static EMPI_Comm EMPI_COMM_CMP, EMPI_COMM_REP, EMPI_CMP_REP_INTERCOMM;
 static MPI_Datatype read_ordered_datatype, write_ordered_datatype;
 static MPI_Request read_request, write_request, read_at_request, write_at_request;
-int *repToCmpMap, *cmpToRepMap;
+extern int *repToCmpMap, *cmpToRepMap;
 //extern int *repToCmpMap, *cmpToRepMap;
 //static char *workDir = "/home/phd/21/cdsjsar/Adaptive_Replication/parep-mpi", *repState = "repState";
 //static char *extLibstr = "/home/phd/21/cdsjsar/MVAPICH2/lib/libmpi.so";
-char extLibstr[256];
+extern char extLibstr[256];
 
-pid_t parep_mpi_coordinator_pid;
+extern pid_t parep_mpi_coordinator_pid;
 
 #define CONFIG_FILE cfg
 #define CP_FILE ckpt
@@ -207,7 +214,7 @@ pid_t parep_mpi_coordinator_pid;
 typedef long RAW_ADDR;
 
 static int repRank = -1;
-int nC,nR;
+extern int nC,nR;
 
 static long array_sum(const int *array,int size) {
 	long sum = 0;
@@ -391,8 +398,8 @@ static bool libUsed;
 static bool parep_mpi_rem_logs = true;
 static bool parep_mpi_make_logs = true;
 
-int num_failures;
-double time_in_err_handler;
+extern int num_failures;
+extern double time_in_err_handler;
 
 extern void parep_mpi_longjmp(jmp_buf,int) __attribute__((visibility("hidden")));
 
@@ -444,7 +451,7 @@ enum mpi_ft_request_type {
 void parep_mpi_send_replication_data(int);
 void parep_mpi_recv_replication_data(int);
 
-EMPI_Comm parep_mpi_original_comm;
+extern EMPI_Comm parep_mpi_original_comm;
 
 /*typedef struct mpi_ft_comm_ptr {
 	struct mpi_ft_comm *p;
@@ -461,16 +468,17 @@ typedef struct mpi_ft_op_ptr {
 mpi_ft_comm_ptr commarr[1024];
 mpi_ft_datatype_ptr dtarr[1024];
 mpi_ft_op_ptr oparr[1024];*/
-MPI_Comm commarr[1024];
-MPI_Datatype dtarr[1024];
-MPI_Op oparr[1024];
-MPI_Request reqarr[1024];
-bool reqinuse[1024];
+extern MPI_Comm commarr[1024];
+extern MPI_Datatype dtarr[1024];
+extern MPI_Op oparr[1024];
+extern MPI_Request reqarr[1024];
+extern bool reqinuse[1024];
 
 void initialize_mpi_variables();
 int empi_comm_creation(int *,int *,int *,char ***,bool);
 void initialize_common_heap_and_stack(int);
 
+#define MPI_FT_FINALIZE_TAG 102534
 #define MPI_FT_WILDCARD_TAG 102535
 #define MPI_FT_COLLECTIVE_TAG 102536
 #define MPI_FT_REDUCE_TAG MPI_FT_COLLECTIVE_TAG+1

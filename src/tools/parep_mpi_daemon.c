@@ -44,6 +44,15 @@ int main(int argc, char **argv) {
 				line[nread-1] = '\0';
 				if(!strcmp(line,host_name)) {
 					break;
+				} else {
+					char *p = strchr(line,'.');
+					if(p != NULL) {
+						*p = '\0';
+					}
+					if(!strcmp(line,host_name)) {
+						break;
+					}
+					*p = '.';
 				}
 				line[nread-1] = '\n';
 			} else if(!strcmp(line,host_name)) {

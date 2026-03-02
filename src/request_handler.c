@@ -2,6 +2,8 @@
 #include "request_handler.h"
 #include "heap_allocator.h"
 
+pthread_t request_handler;
+
 extern int parep_mpi_size;
 extern int parep_mpi_rank;
 extern int parep_mpi_node_rank;
@@ -11,6 +13,8 @@ extern int parep_mpi_node_size;
 
 extern int parep_mpi_sendid;
 extern int parep_mpi_collective_id;
+
+extern int MPI_FT_MAX_IO_CHUNK_SIZE;
 
 extern int parep_mpi_leader_rank;
 extern pthread_mutex_t parep_mpi_leader_rank_mutex;
@@ -78,6 +82,7 @@ bool reqListIsEmpty() {
 bool test_all_coll_requests() {
 	bool progressed = false;
 	bool signal_completion = false;
+	int testret;
 	for(reqNode *start = reqHead; start != NULL; start = start->next) {
 		if(!(start->req->complete)) {
 			if(start->req->type == MPI_FT_COLLECTIVE_REQUEST) {
@@ -85,7 +90,9 @@ bool test_all_coll_requests() {
 				clcdata *cdata = (clcdata *)(req->storeloc);
 				if(!(cdata->completecmp)) {
 					int flag;
-					EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					cdata->completecmp = flag > 0;
 					if(cdata->completecmp) {
 						progressed = true;
@@ -148,8 +155,10 @@ bool test_all_coll_requests() {
 				}
 				if(!(cdata->completerep)) {
 					int flag;
-					if(*(req->reqrep) != EMPI_REQUEST_NULL) EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					if(*(req->reqrep) != EMPI_REQUEST_NULL) testret = EMPI_Test(req->reqrep,&flag,&((req->status).status));
 					else flag = 0;
+					if(testret != EMPI_SUCCESS) flag = 0;
 					cdata->completerep = flag > 0;
 					if(cdata->completerep) {
 						progressed = true;
@@ -211,7 +220,9 @@ bool test_all_coll_requests() {
 				for(int i = 0; i < cdata->num_colls; i++) {
 					if(!(cdata->completecolls[i])) {
 						int flag;
-						EMPI_Test(req->reqcolls[i],&flag,&((req->status).status));
+						testret = EMPI_SUCCESS;
+						testret = EMPI_Test(req->reqcolls[i],&flag,&((req->status).status));
+						if(testret != EMPI_SUCCESS) flag = 0;
 						cdata->completecolls[i] = flag > 0;
 						if(cdata->completecolls[i]) progressed = true;
 					}
@@ -283,12 +294,15 @@ bool test_all_coll_requests() {
 bool test_all_ptp_requests() {
 	bool progressed = false;
 	bool signal_completion = false;
+	int testret;
 	for(reqNode *start = reqHead; start != NULL; start = start->next) {
 		if(!(start->req->complete)) {
 			if(!(start->req->type == MPI_FT_COLLECTIVE_REQUEST) && !(start->req->type == MPI_FT_READ_REQUEST) && !(start->req->type == MPI_FT_WRITE_REQUEST)) {
 				if(!(((ptpdata *)(start->req->storeloc))->completecmp) && (*(start->req->reqcmp) != EMPI_REQUEST_NULL)) {
 					int flag;
-					EMPI_Test(start->req->reqcmp,&flag,&((start->req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(start->req->reqcmp,&flag,&((start->req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					(((ptpdata *)(start->req->storeloc))->completecmp) = flag > 0;
 					if((((ptpdata *)(start->req->storeloc))->completecmp)) {
 						progressed = true;
@@ -416,7 +430,9 @@ bool test_all_ptp_requests() {
 				}
 				if(!(((ptpdata *)(start->req->storeloc))->completerep) && (*(start->req->reqrep) != EMPI_REQUEST_NULL)) {
 					int flag;
-					EMPI_Test(start->req->reqrep,&flag,&((start->req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(start->req->reqrep,&flag,&((start->req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					((ptpdata *)(start->req->storeloc))->completerep = flag > 0;
 					if(((ptpdata *)(start->req->storeloc))->completerep) {
 						progressed = true;
@@ -483,6 +499,7 @@ bool test_all_ptp_requests() {
 
 void test_all_requests_no_lock() {
 	bool signal_completion = false;
+	int testret;
 	for(reqNode *start = reqHead; start != NULL; start = start->next) {
 		if(!(start->req->complete)) {
 			if(start->req->type == MPI_FT_COLLECTIVE_REQUEST) {
@@ -490,7 +507,9 @@ void test_all_requests_no_lock() {
 				clcdata *cdata = (clcdata *)(req->storeloc);
 				if(!(cdata->completecmp)) {
 					int flag;
-					EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					cdata->completecmp = flag > 0;
 					if(cdata->completecmp) {
 						bool alt_comms = false;
@@ -548,8 +567,10 @@ void test_all_requests_no_lock() {
 				}
 				if(!(cdata->completerep)) {
 					int flag;
-					if(*(req->reqrep) != EMPI_REQUEST_NULL) EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					if(*(req->reqrep) != EMPI_REQUEST_NULL) testret = EMPI_Test(req->reqrep,&flag,&((req->status).status));
 					else flag = 0;
+					if(testret != EMPI_SUCCESS) flag = 0;
 					cdata->completerep = flag > 0;
 					if(cdata->completerep) {
 						bool alt_comms = false;
@@ -606,7 +627,9 @@ void test_all_requests_no_lock() {
 				for(int i = 0; i < cdata->num_colls; i++) {
 					if(!(cdata->completecolls[i])) {
 						int flag;
-						EMPI_Test(req->reqcolls[i],&flag,&((req->status).status));
+						testret = EMPI_SUCCESS;
+						testret = EMPI_Test(req->reqcolls[i],&flag,&((req->status).status));
+						if(testret != EMPI_SUCCESS) flag = 0;
 						cdata->completecolls[i] = flag > 0;
 					}
 				}
@@ -669,7 +692,9 @@ void test_all_requests_no_lock() {
 				int flag;
 				if(*(req->reqcmp) != EMPI_REQUEST_NULL) {
 					parep_mpi_empi_entered = true;
-					EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					parep_mpi_empi_entered = false;
 					if(flag > 0) {
 						if(req->iotype == MPI_FT_READ_SHARED_REQUEST) {
@@ -704,9 +729,48 @@ void test_all_requests_no_lock() {
 						} else if(req->iotype == MPI_FT_WRITE_ALL_REQUEST) {
 							int count;
 							EMPI_Get_count(&((req->status).status),EMPI_BYTE,&count);
-							(req->status).count = count;
-							//EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
-							*(req->reqcmp) = EMPI_REQUEST_NULL;
+							(req->status).count += count;
+							int totalsize = req->totalio;
+							MPI_File fh = (MPI_File)req->bufloc;
+							void *buf = req->storeloc;
+							if(req->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+								int myrank;
+								int iosize;
+								EMPI_Comm_rank(req->comm->EMPI_COMM_CMP,&myrank);
+								if(cmpToRepMap[myrank] != -1) iosize = totalsize - (totalsize/2);
+								else iosize = totalsize;
+								MPI_Offset offset;
+								EMPI_File_get_position(fh->efh, &offset);
+								offset += (req->status).count;
+								int remain = iosize - (req->status).count;
+								if(remain > 0) {
+									int trunc_size;
+									if(cmpToRepMap[myrank] != -1) trunc_size = (remain > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : remain;
+									else trunc_size = (remain > MPI_FT_MAX_IO_CHUNK_SIZE) ? MPI_FT_MAX_IO_CHUNK_SIZE : remain;
+									parep_mpi_empi_entered = true;
+									int retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+((req->status).count)), trunc_size, EMPI_BYTE, req->reqcmp);
+									parep_mpi_empi_entered = false;
+								} else {
+									//EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
+									*(req->reqcmp) = EMPI_REQUEST_NULL;
+								}
+							} else if(req->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
+								int iosize;
+								iosize = (totalsize/2);
+								MPI_Offset offset;
+								EMPI_File_get_position(fh->efh, &offset);
+								offset += (totalsize - iosize + (req->status).count);
+								int remain = iosize - (req->status).count;
+								if(remain > 0) {
+									int trunc_size = (remain > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : remain;
+									parep_mpi_empi_entered = true;
+									int retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(totalsize-iosize+(req->status).count)), trunc_size, EMPI_BYTE, req->reqcmp);
+									parep_mpi_empi_entered = false;
+								} else {
+									//EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
+									*(req->reqcmp) = EMPI_REQUEST_NULL;
+								}
+							}
 						} else {
 							int count;
 							EMPI_Get_count(&((req->status).status),EMPI_BYTE,&count);
@@ -716,7 +780,9 @@ void test_all_requests_no_lock() {
 					}
 				}
 				if(*(req->reqrep) != EMPI_REQUEST_NULL) {
-					EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					if(flag > 0) {
 						if(req->iotype == MPI_FT_READ_SHARED_REQUEST) {
 							if(req->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
@@ -735,12 +801,12 @@ void test_all_requests_no_lock() {
 							*(req->reqrep) = EMPI_REQUEST_NULL;
 							if(req->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
 								if(!(req->iotransfercomplete)) {
-									int count;
+									/*int count;
 									EMPI_Get_count(&((req->status).status),EMPI_BYTE,&count);
 									req->iotransfercomplete = true;
 									parep_mpi_empi_entered = true;
 									EMPI_File_iwrite_all(((MPI_File)(req->bufloc))->repfh, req->cbuf, count, ((MPI_File)(req->bufloc))->real_view.etype->edatatype, req->reqrep);
-									parep_mpi_empi_entered = false;
+									parep_mpi_empi_entered = false;*/
 								} else {
 									parep_mpi_free(req->cbuf);
 								}
@@ -755,7 +821,9 @@ void test_all_requests_no_lock() {
 			} else {
 				if(!(((ptpdata *)(start->req->storeloc))->completecmp) && (*(start->req->reqcmp) != EMPI_REQUEST_NULL)) {
 					int flag;
-					EMPI_Test(start->req->reqcmp,&flag,&((start->req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(start->req->reqcmp,&flag,&((start->req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					(((ptpdata *)(start->req->storeloc))->completecmp) = flag > 0;
 					if((((ptpdata *)(start->req->storeloc))->completecmp)) {
 						if(start->req->type == MPI_FT_RECV_REQUEST) {
@@ -876,7 +944,9 @@ void test_all_requests_no_lock() {
 				}
 				if(!(((ptpdata *)(start->req->storeloc))->completerep) && (*(start->req->reqrep) != EMPI_REQUEST_NULL)) {
 					int flag;
-					EMPI_Test(start->req->reqrep,&flag,&((start->req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(start->req->reqrep,&flag,&((start->req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					((ptpdata *)(start->req->storeloc))->completerep = flag > 0;
 					if(((ptpdata *)(start->req->storeloc))->completerep) {
 						if(start->req->type == MPI_FT_RECV_REQUEST) {
@@ -937,6 +1007,7 @@ void test_all_requests_no_lock() {
 bool test_all_requests() {
 	bool progressed = false;
 	bool signal_completion = false;
+	int testret;
 	for(reqNode *start = reqHead; start != NULL; start = start->next) {
 		if(!(start->req->complete)) {
 			if(start->req->type == MPI_FT_COLLECTIVE_REQUEST) {
@@ -944,7 +1015,9 @@ bool test_all_requests() {
 				clcdata *cdata = (clcdata *)(req->storeloc);
 				if(!(cdata->completecmp)) {
 					int flag;
-					EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					cdata->completecmp = flag > 0;
 					if(cdata->completecmp) {
 						progressed = true;
@@ -1003,8 +1076,10 @@ bool test_all_requests() {
 				}
 				if(!(cdata->completerep)) {
 					int flag;
-					if(*(req->reqrep) != EMPI_REQUEST_NULL) EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					if(*(req->reqrep) != EMPI_REQUEST_NULL) testret = EMPI_Test(req->reqrep,&flag,&((req->status).status));
 					else flag = 0;
+					if(testret != EMPI_SUCCESS) flag = 0;
 					cdata->completerep = flag > 0;
 					if(cdata->completerep) {
 						progressed = true;
@@ -1066,7 +1141,9 @@ bool test_all_requests() {
 				for(int i = 0; i < cdata->num_colls; i++) {
 					if(!(cdata->completecolls[i])) {
 						int flag;
-						EMPI_Test(req->reqcolls[i],&flag,&((req->status).status));
+						testret = EMPI_SUCCESS;
+						testret = EMPI_Test(req->reqcolls[i],&flag,&((req->status).status));
+						if(testret != EMPI_SUCCESS) flag = 0;
 						cdata->completecolls[i] = flag > 0;
 					}
 				}
@@ -1130,7 +1207,9 @@ bool test_all_requests() {
 				int flag;
 				if(*(req->reqcmp) != EMPI_REQUEST_NULL) {
 					parep_mpi_empi_entered = true;
-					EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqcmp,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					parep_mpi_empi_entered = false;
 					if(flag > 0) {
 						if(req->iotype == MPI_FT_READ_SHARED_REQUEST) {
@@ -1167,11 +1246,52 @@ bool test_all_requests() {
 							EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
 							*(req->reqcmp) = EMPI_REQUEST_NULL;
 						} else if(req->iotype == MPI_FT_WRITE_ALL_REQUEST) {
+							pthread_rwlock_rdlock(&commLock);
 							int count;
 							EMPI_Get_count(&((req->status).status),EMPI_BYTE,&count);
-							(req->status).count = count;
-							//EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
-							*(req->reqcmp) = EMPI_REQUEST_NULL;
+							(req->status).count += count;
+							int totalsize = req->totalio;
+							MPI_File fh = (MPI_File)req->bufloc;
+							void *buf = req->storeloc;
+							if(req->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+								int myrank;
+								int iosize;
+								EMPI_Comm_rank(req->comm->EMPI_COMM_CMP,&myrank);
+								if(cmpToRepMap[myrank] != -1) iosize = totalsize - (totalsize/2);
+								else iosize = totalsize;
+								MPI_Offset offset;
+								EMPI_File_get_position(fh->efh, &offset);
+								offset += (req->status).count;
+								int remain = iosize - (req->status).count;
+								if(remain > 0) {
+									int trunc_size;
+									if(cmpToRepMap[myrank] != -1) trunc_size = (remain > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : remain;
+									else trunc_size = (remain > MPI_FT_MAX_IO_CHUNK_SIZE) ? MPI_FT_MAX_IO_CHUNK_SIZE : remain;
+									parep_mpi_empi_entered = true;
+									int retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+((req->status).count)), trunc_size, EMPI_BYTE, req->reqcmp);
+									parep_mpi_empi_entered = false;
+								} else {
+									//EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
+									*(req->reqcmp) = EMPI_REQUEST_NULL;
+								}
+							} else if(req->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
+								int iosize;
+								iosize = (totalsize/2);
+								MPI_Offset offset;
+								EMPI_File_get_position(fh->efh, &offset);
+								offset += (totalsize - iosize + (req->status).count);
+								int remain = iosize - (req->status).count;
+								if(remain > 0) {
+									int trunc_size = (remain > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : remain;
+									parep_mpi_empi_entered = true;
+									int retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(totalsize-iosize+(req->status).count)), trunc_size, EMPI_BYTE, req->reqcmp);
+									parep_mpi_empi_entered = false;
+								} else {
+									//EMPI_Ibarrier(req->comm->pairComm, req->reqrep);
+									*(req->reqcmp) = EMPI_REQUEST_NULL;
+								}
+							}
+							pthread_rwlock_unlock(&commLock);
 						} else {
 							int count;
 							EMPI_Get_count(&((req->status).status),EMPI_BYTE,&count);
@@ -1181,7 +1301,9 @@ bool test_all_requests() {
 					}
 				}
 				if(*(req->reqrep) != EMPI_REQUEST_NULL) {
-					EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(req->reqrep,&flag,&((req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					if(flag > 0) {
 						if(req->iotype == MPI_FT_READ_SHARED_REQUEST) {
 							pthread_rwlock_rdlock(&commLock);
@@ -1205,12 +1327,12 @@ bool test_all_requests() {
 							pthread_rwlock_rdlock(&commLock);
 							if(req->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
 								if(!(req->iotransfercomplete)) {
-									int count;
+									/*int count;
 									EMPI_Get_count(&((req->status).status),EMPI_BYTE,&count);
 									req->iotransfercomplete = true;
 									parep_mpi_empi_entered = true;
 									EMPI_File_iwrite_all(((MPI_File)(req->bufloc))->repfh, req->cbuf, count, ((MPI_File)(req->bufloc))->real_view.etype->edatatype, req->reqrep);
-									parep_mpi_empi_entered = false;
+									parep_mpi_empi_entered = false;*/
 								} else {
 									parep_mpi_free(req->cbuf);
 								}
@@ -1226,7 +1348,9 @@ bool test_all_requests() {
 			} else {
 				if(!(((ptpdata *)(start->req->storeloc))->completecmp) && (*(start->req->reqcmp) != EMPI_REQUEST_NULL)) {
 					int flag;
-					EMPI_Test(start->req->reqcmp,&flag,&((start->req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(start->req->reqcmp,&flag,&((start->req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					(((ptpdata *)(start->req->storeloc))->completecmp) = flag > 0;
 					if((((ptpdata *)(start->req->storeloc))->completecmp)) {
 						progressed = true;
@@ -1354,7 +1478,9 @@ bool test_all_requests() {
 				}
 				if(!(((ptpdata *)(start->req->storeloc))->completerep) && (*(start->req->reqrep) != EMPI_REQUEST_NULL)) {
 					int flag;
-					EMPI_Test(start->req->reqrep,&flag,&((start->req->status).status));
+					testret = EMPI_SUCCESS;
+					testret = EMPI_Test(start->req->reqrep,&flag,&((start->req->status).status));
+					if(testret != EMPI_SUCCESS) flag = 0;
 					((ptpdata *)(start->req->storeloc))->completerep = flag > 0;
 					if(((ptpdata *)(start->req->storeloc))->completerep) {
 						progressed = true;
@@ -1433,6 +1559,7 @@ bool test_all_requests() {
 int probe_msg_from_source(MPI_Comm comm, int src) {
 	int myrank;
 	bool progressed;
+	int proberet;
 	EMPI_Comm_rank(comm->eworldComm,&myrank);
 	if(comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
 		if(src != myrank) {
@@ -1440,7 +1567,9 @@ int probe_msg_from_source(MPI_Comm comm, int src) {
 			EMPI_Status stat;
 			do {
 				MPI_Comm comm = MPI_COMM_WORLD;
-				EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+				proberet = EMPI_SUCCESS;
+				proberet = EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+				if(proberet != EMPI_SUCCESS) flag = 0;
 				if(flag) {
 					pthread_rwlock_unlock(&commLock);
 					do {
@@ -1448,6 +1577,8 @@ int probe_msg_from_source(MPI_Comm comm, int src) {
 					} while(progressed);
 					pthread_rwlock_rdlock(&commLock);
 					EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+					proberet = EMPI_SUCCESS;
+					if(proberet != EMPI_SUCCESS) flag = 0;
 					if(flag == 0) {
 						flag = 1;
 						continue;
@@ -1517,16 +1648,20 @@ int probe_msg_from_source(MPI_Comm comm, int src) {
 			int flag = 0;
 			EMPI_Status stat;
 			do {
-				if(src < nC) EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-				else EMPI_Iprobe(src-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+				proberet = EMPI_SUCCESS;
+				if(src < nC) proberet = EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+				else proberet = EMPI_Iprobe(src-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+				if(proberet != EMPI_SUCCESS) flag = 0;
 				if(flag) {
 					pthread_rwlock_unlock(&commLock);
 					do {
 						progressed = test_all_ptp_requests();
 					} while(progressed);
 					pthread_rwlock_rdlock(&commLock);
-					if(src < nC) EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-					else EMPI_Iprobe(src-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+					proberet = EMPI_SUCCESS;
+					if(src < nC) proberet = EMPI_Iprobe(src,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+					else proberet = EMPI_Iprobe(src-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+					if(proberet != EMPI_SUCCESS) flag = 0;
 					if(flag == 0) {
 						flag = 1;
 						continue;
@@ -1597,7 +1732,20 @@ int probe_msg_from_source(MPI_Comm comm, int src) {
 	return 0;
 }
 
+int probe_msg_from_all(MPI_Comm comm) {
+	for(int source = 0; source < nC; source++) {
+		if((comm->EMPI_COMM_REP) != EMPI_COMM_NULL) {
+			if(cmpToRepMap[source] == -1) probe_msg_from_source(comm, source);
+			else probe_msg_from_source(comm, cmpToRepMap[source]+nC);
+		} else if((comm->EMPI_COMM_CMP)!= EMPI_COMM_NULL) {
+			probe_msg_from_source(comm, source);
+		}
+	}
+	return 0;
+}
+
 void probe_reduce_messages() {
+	int proberet;
 	if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) {
 		MPI_Comm comm = MPI_COMM_WORLD;
 		int reprank,cmprank;
@@ -1611,14 +1759,18 @@ void probe_reduce_messages() {
 		EMPI_Comm_rank(comm->EMPI_COMM_REP,&reprank);
 		cmprank = repToCmpMap[reprank];
 		do {
-			EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+			proberet = EMPI_SUCCESS;
+			proberet = EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+			if(proberet != EMPI_SUCCESS) flag = 0;
 			if(flag) {
 				pthread_rwlock_unlock(&commLock);
 				do {
 					progressed = test_all_requests();
 				} while(progressed);
 				pthread_rwlock_rdlock(&commLock);
-				EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+				proberet = EMPI_SUCCESS;
+				proberet = EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+				if(proberet != EMPI_SUCCESS) flag = 0;
 				if(flag == 0) {
 					flag = 1;
 					continue;
@@ -1738,6 +1890,7 @@ void probe_reduce_messages() {
 }
 
 void probe_reduce_messages_with_comm(MPI_Comm comm) {
+	int proberet;
 	if(comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
 		int reprank,cmprank;
 		bool progressed;
@@ -1751,14 +1904,18 @@ void probe_reduce_messages_with_comm(MPI_Comm comm) {
 		EMPI_Comm_rank(comm->EMPI_COMM_REP,&reprank);
 		cmprank = repToCmpMap[reprank];
 		do {
-			EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+			proberet = EMPI_SUCCESS;
+			proberet = EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+			if(proberet != EMPI_SUCCESS) flag = 0;
 			if(flag) {
 				pthread_rwlock_unlock(&commLock);
 				do {
 					progressed = test_all_coll_requests();
 				} while(progressed);
 				pthread_rwlock_rdlock(&commLock);
-				EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+				proberet = EMPI_SUCCESS;
+				proberet = EMPI_Iprobe(cmprank,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+				if(proberet != EMPI_SUCCESS) flag = 0;
 				if(flag == 0) {
 					flag = 1;
 					continue;

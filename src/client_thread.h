@@ -30,8 +30,8 @@ struct parep_mpi_recv_data_list_node {
 };
 typedef struct parep_mpi_recv_data_list_node recvDataNode;
 
-pthread_t daemon_poller;
-pthread_t comm_shrinker;
+extern pthread_t daemon_poller;
+extern pthread_t comm_shrinker;
 
 static pthread_mutex_t performing_shrink_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t performing_shrink_cond = PTHREAD_COND_INITIALIZER;
@@ -49,7 +49,7 @@ void *polling_daemon(void *);
 int handle_rem_recv();
 int handle_rem_recv_no_poll();
 
-EMPI_Group parep_mpi_original_group;
+extern EMPI_Group parep_mpi_original_group;
 static EMPI_Group parep_mpi_failed_group = EMPI_GROUP_EMPTY;
 
 void recvDataListInsert(ptpdata *);

@@ -191,7 +191,7 @@ void *polling_server(void *);
 void perform_propagate(void *, size_t);
 
 void *handle_connection(void *p_client_socket);
-void handle_waitpid_output(pid_t *, int);
+void handle_waitpid_output(pid_t *, int, int);
 int check(int,const char *);
 void *thread_function(void *);
 void *empi_thread_function(void *);
@@ -253,29 +253,29 @@ int parep_mpi_node_group_id;
 int parep_mpi_node_group_nodeid;
 int parep_mpi_node_group_size;
 int parep_mpi_node_group_nodesize;
-int *parep_mpi_node_sizes;
+int *parep_mpi_node_sizes = NULL;
 int *parep_mpi_node_group_sizes;
 int *parep_mpi_node_group_ids;
 int *parep_mpi_node_group_nodeids;
 int *parep_mpi_node_group_nodesizes;
-pid_t *parep_mpi_pids;
-pid_t *parep_mpi_global_pids;
-int *parep_mpi_ranks;
-int *parep_mpi_all_ranks;
+pid_t *parep_mpi_pids = NULL;
+pid_t *parep_mpi_global_pids = NULL;
+int *parep_mpi_ranks = NULL;
+int *parep_mpi_all_ranks = NULL;
 
 pid_t parep_mpi_empi_pid;
 pid_t parep_mpi_empi_exec_pid = (pid_t)-1;
 
-rlims *rank_lims_all;
+rlims *rank_lims_all = NULL;
 rlims rank_lims;
 
 int dyn_server_sock;
 int server_socket;
 int server_group_socket;
-int *daemon_socket;
+int *daemon_socket = NULL;
 int daemon_client_socket;
 int daemon_server_socket;
-int *client_socket;
+int *client_socket = NULL;
 int empi_socket;
 int empi_client_socket;
 int empi_exec_socket;
@@ -287,10 +287,10 @@ pthread_mutex_t daemon_sock_mutex = PTHREAD_MUTEX_INITIALIZER;
 int parep_mpi_reconf_ngroup = 0;
 pthread_mutex_t proc_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t proc_state_cond = PTHREAD_COND_INITIALIZER;
-int *local_proc_state;
-int *daemon_state;
-int *group_daemon_state;
-int *global_proc_state;
+int *local_proc_state = NULL;
+int *daemon_state = NULL;
+int *group_daemon_state = NULL;
+int *global_proc_state = NULL;
 
 pthread_mutex_t empi_waitpid_safe_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t empi_waitpid_safe_cond = PTHREAD_COND_INITIALIZER;
@@ -312,10 +312,10 @@ int remote_procs_term_ack = 0;
 pthread_mutex_t ethread_created_mutex = PTHREAD_MUTEX_INITIALIZER;
 int ethread_created = 0;
 
-SA_IN *coordinator_addr;
+SA_IN *coordinator_addr = NULL;
 SA_IN main_coordinator_addr;
 
-SA_IN *group_coordinator_addr;
+SA_IN *group_coordinator_addr = NULL;
 SA_IN group_main_coordinator_addr;
 
 char **coordinator_name;

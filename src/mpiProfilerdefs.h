@@ -40,8 +40,8 @@ struct mpi_dt_subarray {
 struct mpi_ft_datatype {
 	EMPI_Datatype edatatype;
 	EMPI_Datatype iodttype;
-	EMPI_Datatype pairdttype;
-	EMPI_Datatype bufdttype;
+	//EMPI_Datatype pairdttype;
+	//EMPI_Datatype bufdttype;
 	int size;
 	MPI_Aint lb;
 	MPI_Aint extent;
@@ -98,8 +98,8 @@ typedef struct parep_mpi_fh_list_node fhNode;
 struct mpi_ft_file {
 	EMPI_File efh;
 	EMPI_File pairfh;
-	EMPI_File rdfh;
-	EMPI_File repfh;
+/*	EMPI_File rdfh;
+	EMPI_File repfh;*/
 	MPI_Comm comm;
 	char filename[256];
 	int amode;

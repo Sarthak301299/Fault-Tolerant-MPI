@@ -18,7 +18,7 @@
 bool parep_mpi_disable_ckpt();
 void parep_mpi_enable_ckpt();
 
-pthread_t waitWaker;
+extern pthread_t waitWaker;
 
 //void parep_mpi_disable_ckpt_dl();
 //void parep_mpi_enable_ckpt_dl();

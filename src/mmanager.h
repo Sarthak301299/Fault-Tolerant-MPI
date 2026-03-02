@@ -16,7 +16,7 @@
 
 #define MAX_SOCKETS 20
 #define MAX_PATH_LEN 256
-#define MAX_MAPPINGS 1000
+#define MAX_MAPPINGS 4096
 #define MAX_MAPS_LINE_LEN 1024
 #define SIGNATURE "CKPT_HEADER_v2.2\n"
 #define SIGNATURE_LEN 32
@@ -110,21 +110,21 @@ typedef struct SocketInfo {
 	socklen_t len;
 } SockInfo;
 
-ProcessStat prstat;
-Mapping mappings[MAX_MAPPINGS];
-SockInfo sockinfo[MAX_SOCKETS];
-address base_brk;
-
-int num_socks;
-
-int num_mappings;
-int num_heapmaps;
-int num_stackmaps;
-int num_anonmaps;
-
-address actual_brk;
-address actual_stack_start;
-address actual_stack_end;
+extern ProcessStat prstat;
+extern Mapping mappings[MAX_MAPPINGS];
+extern SockInfo sockinfo[MAX_SOCKETS];
+extern address base_brk;
+ 
+extern int num_socks;
+ 
+extern int num_mappings;
+extern int num_heapmaps;
+extern int num_stackmaps;
+extern int num_anonmaps;
+ 
+extern address actual_brk;
+extern address actual_stack_start;
+extern address actual_stack_end;
 
 void parseStatFile();
 void parseSockInfo();

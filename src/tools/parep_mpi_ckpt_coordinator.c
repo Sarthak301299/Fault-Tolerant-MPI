@@ -1649,7 +1649,7 @@ void *polling_server(void *arg) {
 					pthread_mutex_lock(&daemon_sock_mutex);
 					int index = 0;
 					for(int j = 0; j < parep_mpi_node_group_size; j++) {
-						if((group_daemon_state[j] != PROC_TERMINATED)) {
+						if((group_daemon_state[j] != PROC_TERMINATED) && (daemon_socket[j] != -1)) {
 							struct pollfd pfd;
 							pfd.fd = daemon_socket[j];
 							pfd.events = POLLIN;
@@ -1726,6 +1726,7 @@ int check_node_failed(int infinite_timeout) {
 		pthread_cond_wait(&proc_state_cond,&proc_state_mutex);
 	}
 	pthread_mutex_lock(&daemon_sock_mutex);
+	int ngcheck = 1;
 	for(int j = 0; j < parep_mpi_node_num; j++) {
 		if((daemon_state[j] != PROC_TERMINATED)) {
 			if((parep_mpi_node_group_ids[j] == 0)) {
@@ -1761,29 +1762,42 @@ int check_node_failed(int infinite_timeout) {
 						if(bytes_read <= 0) failcase = true;
 					}
 					if((pfd.revents & POLLHUP) || (pfd.revents & POLLERR) || failcase) {
-						pthread_mutex_unlock(&daemon_sock_mutex);
-						while(daemon_state[j] != PROC_TERMINATED) {
-							waiting_for_node_fail_detect = true;
-							pthread_cond_wait(&proc_state_cond,&proc_state_mutex);
-							waiting_for_node_fail_detect = false;
+						if(parep_mpi_node_group_sizes[parep_mpi_node_group_ids[j]] == 1) {
+							daemon_state[j] = PROC_TERMINATED;
+							pthread_cond_signal(&proc_state_cond);
+							num_nodes_failed++;
+							ngcheck++;
+						} else {
+							pthread_mutex_unlock(&daemon_sock_mutex);
+							while(daemon_state[j] != PROC_TERMINATED) {
+								waiting_for_node_fail_detect = true;
+								pthread_cond_wait(&proc_state_cond,&proc_state_mutex);
+								waiting_for_node_fail_detect = false;
+							}
+							pthread_mutex_lock(&daemon_sock_mutex);
+							pthread_cond_signal(&proc_state_cond);
+							num_nodes_failed++;
 						}
-						pthread_mutex_lock(&daemon_sock_mutex);
-						pthread_cond_signal(&proc_state_cond);
-						num_nodes_failed++;
 					}
 				} else if(pollret == 0) {
 					int cmd = CMD_CHECK_NODE_FAIL;
 					write_to_fd(daemon_socket[j],&cmd,sizeof(int));
 				}
 			}
+		} else {
+			if(parep_mpi_node_group_sizes[parep_mpi_node_group_ids[j]] == 1) {
+				ngcheck++;
+			}
 		}
 	}
 	pthread_mutex_unlock(&daemon_sock_mutex);
 	pthread_mutex_unlock(&proc_state_mutex);
-	parep_mpi_node_group_checked += 1;
+	parep_mpi_node_group_checked += ngcheck;
 	pthread_mutex_lock(&parep_mpi_node_group_checked_mutex);
 	while(parep_mpi_node_group_checked < parep_mpi_node_group_num) {
+		pthread_cleanup_push((void (*)(void *))pthread_mutex_unlock, &parep_mpi_node_group_checked_mutex);
 		pthread_cond_wait(&parep_mpi_node_group_checked_cond,&parep_mpi_node_group_checked_mutex);
+		pthread_cleanup_pop(0);
 	}
 	parep_mpi_node_group_checked = 0;
 	num_nodes_failed += parep_mpi_num_nodes_failed;
@@ -1932,7 +1946,30 @@ void *empi_thread_function(void *arg) {
 					
 					int num_nodes_failed = 0;
 					if(isMainServer) {
-						num_nodes_failed = check_node_failed(infinite_timeout);
+						int exit_recvd;
+						int local_term;
+						pthread_mutex_lock(&exit_cmd_recvd_mutex);
+						exit_recvd = exit_cmd_recvd;
+						pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+						pthread_mutex_lock(&local_procs_term_mutex);
+						local_term = local_procs_term;
+						pthread_mutex_unlock(&local_procs_term_mutex);
+						if((exit_recvd == 0) && (local_term == 0)) {
+							num_nodes_failed = check_node_failed(infinite_timeout);
+						} else if(local_term == 0) {
+							int local_terminated = 1;
+							for(int i = 0; i < parep_mpi_node_size; i++) {
+								if(global_proc_state[i] != PROC_TERMINATED) {
+									local_terminated = 0;
+								}
+							}
+							if(local_terminated) {
+								pthread_mutex_lock(&local_procs_term_mutex);
+								local_procs_term = local_terminated;
+								pthread_cond_signal(&local_procs_term_cond);
+								pthread_mutex_unlock(&local_procs_term_mutex);
+							}
+						}
 					}
 					
 					if(num_nodes_failed > 0) {
@@ -1941,6 +1978,7 @@ void *empi_thread_function(void *arg) {
 						for(int j = 0; j < parep_mpi_size; j++) proc_failed[j] = 0;
 						pthread_mutex_lock(&proc_state_mutex);
 						int rank_offset = 0;
+						pthread_mutex_lock(&parep_mpi_num_failed_mutex);
 						for(int i = 0; i < parep_mpi_node_num; i++) {
 							if(daemon_state[i] == PROC_TERMINATED) {
 								int start_rank = rank_offset;
@@ -1949,15 +1987,14 @@ void *empi_thread_function(void *arg) {
 										global_proc_state[j] = PROC_TERMINATED;
 										num_failed++;
 										proc_failed[j] = 1;
-										pthread_mutex_lock(&parep_mpi_num_failed_mutex);
 										parep_mpi_num_failed++;
 										pthread_cond_signal(&parep_mpi_barrier_count_cond);
-										pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
 									}
 								}
 							}
 							rank_offset += parep_mpi_node_sizes[i];
 						}
+						pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
 						
 						int exit_recvd;
 						int local_term;
@@ -2028,12 +2065,25 @@ void *empi_thread_function(void *arg) {
 							pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
 							pthread_mutex_lock(&proc_state_mutex);
 							free(proc_state_data_buf);
+						} else if(local_term == 0) {
+							int local_terminated = 1;
+							for(int i = 0; i < parep_mpi_node_size; i++) {
+								if(global_proc_state[i] != PROC_TERMINATED) {
+									local_terminated = 0;
+								}
+							}
+							if(local_terminated) {
+								pthread_mutex_lock(&local_procs_term_mutex);
+								local_procs_term = local_terminated;
+								pthread_cond_signal(&local_procs_term_cond);
+								pthread_mutex_unlock(&local_procs_term_mutex);
+							}
 						}
 						
 						pthread_cond_signal(&proc_state_cond);
 						pthread_mutex_unlock(&proc_state_mutex);
 						free(proc_failed);
-					} else {
+					} else if(pthread_self() == empi_thread) {
 						struct pollfd *pfds;
 						nfds_t nfds = parep_mpi_node_size;
 						pfds = (struct pollfd *)malloc(nfds * sizeof(struct pollfd));
@@ -2327,7 +2377,7 @@ void *empi_thread_function(void *arg) {
 							}
 							check(bytes_read,"recv error empi pid buffer");
 						}
-						handle_waitpid_output(pid_buffer,waitpid_num);
+						handle_waitpid_output(pid_buffer,waitpid_num, !wnohang_used);
 						free(pid_buffer);
 					}
 					
@@ -2363,7 +2413,7 @@ void get_rank_from_pid(pid_t pid, int *rank, int *node_rank) {
 	}
 }
 
-void handle_waitpid_output(pid_t *pid_buffer, int pid_num) {
+void handle_waitpid_output(pid_t *pid_buffer, int pid_num, int infinite_timeout) {
 	int num_proc_update = 0;
 	bool *proc_updated = (bool *)malloc(sizeof(bool) * parep_mpi_node_size);
 	for(int j = 0; j < parep_mpi_node_size; j++) proc_updated[j] = false;
@@ -2373,18 +2423,158 @@ void handle_waitpid_output(pid_t *pid_buffer, int pid_num) {
 		int node_rank;
 		int rank;
 		get_rank_from_pid(pid_buffer[i],&rank,&node_rank);
-		assert((rank >= 0) && (node_rank >= 0));
+		assert(((rank >= 0) && (node_rank >= 0)) || (isMainServer));
 		
 		if(isMainServer) {
-			assert((rank >= rank_lims_all[0].start) && (rank <= rank_lims_all[0].end));
-			if(global_proc_state[rank] != PROC_TERMINATED) {
-				global_proc_state[rank] = PROC_TERMINATED;
-				num_proc_update++;
-				proc_updated[rank] = true;
-				pthread_mutex_lock(&parep_mpi_num_failed_mutex);
-				parep_mpi_num_failed++;
-				pthread_cond_signal(&parep_mpi_barrier_count_cond);
-				pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+			if(!((rank >= 0) && (node_rank >= 0))) {
+				pthread_mutex_unlock(&proc_state_mutex);
+				int num_nodes_failed = 0;
+				int exit_recvd;
+				int local_term;
+				pthread_mutex_lock(&exit_cmd_recvd_mutex);
+				exit_recvd = exit_cmd_recvd;
+				pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+				pthread_mutex_lock(&local_procs_term_mutex);
+				local_term = local_procs_term;
+				pthread_mutex_unlock(&local_procs_term_mutex);
+				if((exit_recvd == 0) && (local_term == 0)) {
+					num_nodes_failed = check_node_failed(infinite_timeout);
+				} else if(local_term == 0) {
+					int local_terminated = 1;
+					for(int i = 0; i < parep_mpi_node_size; i++) {
+						if(global_proc_state[i] != PROC_TERMINATED) {
+							local_terminated = 0;
+						}
+					}
+					if(local_terminated) {
+						pthread_mutex_lock(&local_procs_term_mutex);
+						local_procs_term = local_terminated;
+						pthread_cond_signal(&local_procs_term_cond);
+						pthread_mutex_unlock(&local_procs_term_mutex);
+					}
+				}
+				if(num_nodes_failed > 0) {
+					int num_failed = 0;
+					int *proc_failed = (int *)malloc(sizeof(int) * parep_mpi_size);
+					for(int j = 0; j < parep_mpi_size; j++) proc_failed[j] = 0;
+					pthread_mutex_lock(&proc_state_mutex);
+					int rank_offset = 0;
+					pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+					for(int i = 0; i < parep_mpi_node_num; i++) {
+						if(daemon_state[i] == PROC_TERMINATED) {
+							int start_rank = rank_offset;
+							for(int j = start_rank; j < start_rank+parep_mpi_node_sizes[i]; j++) {
+								if(global_proc_state[j] != PROC_TERMINATED) {
+									global_proc_state[j] = PROC_TERMINATED;
+									num_failed++;
+									proc_failed[j] = 1;
+									parep_mpi_num_failed++;
+									pthread_cond_signal(&parep_mpi_barrier_count_cond);
+								}
+							}
+						}
+						rank_offset += parep_mpi_node_sizes[i];
+					}
+					pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+					
+					pthread_mutex_lock(&exit_cmd_recvd_mutex);
+					exit_recvd = exit_cmd_recvd;
+					pthread_mutex_unlock(&exit_cmd_recvd_mutex);
+					pthread_mutex_lock(&local_procs_term_mutex);
+					local_term = local_procs_term;
+					pthread_mutex_unlock(&local_procs_term_mutex);
+					if((exit_recvd == 0) && (local_term == 0)) {
+						char *proc_state_data_buf = (char *)malloc(sizeof(int) * num_failed);
+						size_t offset = 0;
+						for(int i = 0; i < parep_mpi_size; i++) {
+							if(proc_failed[i]) {
+								char *proc_state_data = proc_state_data_buf + offset;
+								*((int *)proc_state_data) = parep_mpi_all_ranks[i];
+								offset += sizeof(int);
+							}
+						}
+						int cmd = CMD_INFORM_PROC_FAILED;
+						pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
+						parep_mpi_fail_ready = 1;
+						pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
+						pthread_cond_signal(&proc_state_cond);
+						pthread_mutex_unlock(&proc_state_mutex);
+						pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+						pthread_mutex_lock(&parep_mpi_barrier_running_mutex);
+						while(parep_mpi_barrier_running == 1) {
+							pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+							pthread_cond_wait(&parep_mpi_barrier_running_cond,&parep_mpi_barrier_running_mutex);
+							if(parep_mpi_barrier_running == 0) pthread_mutex_lock(&parep_mpi_inform_failed_mutex);
+						}
+						pthread_mutex_unlock(&parep_mpi_barrier_running_mutex);
+						pthread_mutex_lock(&proc_state_mutex);
+						pthread_mutex_lock(&daemon_sock_mutex);
+						for(int j = 1; j < parep_mpi_node_num; j++) {
+							if((daemon_state[j] != PROC_TERMINATED) && ((parep_mpi_node_group_ids[j] == 0) || (parep_mpi_node_group_nodeids[j] == parep_mpi_node_group_leader_nodeids[j]))) {
+								write_to_fd(daemon_socket[j],&cmd,sizeof(int));
+								write_to_fd(daemon_socket[j],&num_failed,sizeof(int));
+								write_to_fd(daemon_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
+							}
+						}
+						pthread_mutex_unlock(&daemon_sock_mutex);
+						pthread_mutex_lock(&client_sock_mutex);
+						for(int j = 0; j < parep_mpi_node_size; j++) {
+							if(global_proc_state[j] != PROC_TERMINATED) {
+								write_to_fd(client_socket[j],&cmd,sizeof(int));
+								write_to_fd(client_socket[j],&num_failed,sizeof(int));
+								write_to_fd(client_socket[j],proc_state_data_buf, sizeof(int) * num_failed);
+							}
+						}
+						pthread_mutex_unlock(&client_sock_mutex);
+						int *fprocs = (int *)proc_state_data_buf;
+						for(int j = 0; j < num_failed; j++) {
+							if(!parep_mpi_inform_failed_check[fprocs[j]]) {
+								parep_mpi_inform_failed_check[fprocs[j]] = true;
+								parep_mpi_num_inform_failed++;
+								int nodeid = fprocs[j] / parep_mpi_node_size;
+								int nodegroupid = parep_mpi_node_group_ids[nodeid];
+								parep_mpi_num_inform_failed_node[nodeid]++;
+								parep_mpi_num_inform_failed_node_group[nodegroupid]++;
+							}
+						}
+						pthread_mutex_lock(&parep_mpi_fail_ready_mutex);
+						parep_mpi_fail_ready = 0;
+						pthread_mutex_unlock(&parep_mpi_fail_ready_mutex);
+						pthread_mutex_unlock(&proc_state_mutex);
+						pthread_mutex_unlock(&parep_mpi_inform_failed_mutex);
+						pthread_mutex_lock(&proc_state_mutex);
+						free(proc_state_data_buf);
+					} else if(local_term == 0) {
+						int local_terminated = 1;
+						for(int i = 0; i < parep_mpi_node_size; i++) {
+							if(global_proc_state[i] != PROC_TERMINATED) {
+								local_terminated = 0;
+							}
+						}
+						if(local_terminated) {
+							pthread_mutex_lock(&local_procs_term_mutex);
+							local_procs_term = local_terminated;
+							pthread_cond_signal(&local_procs_term_cond);
+							pthread_mutex_unlock(&local_procs_term_mutex);
+						}
+					}
+					
+					pthread_cond_signal(&proc_state_cond);
+					pthread_mutex_unlock(&proc_state_mutex);
+					free(proc_failed);
+				}
+				pthread_mutex_lock(&proc_state_mutex);
+			} else {
+				assert((rank >= rank_lims_all[0].start) && (rank <= rank_lims_all[0].end));
+				if(global_proc_state[rank] != PROC_TERMINATED) {
+					global_proc_state[rank] = PROC_TERMINATED;
+					num_proc_update++;
+					proc_updated[rank] = true;
+					pthread_mutex_lock(&parep_mpi_num_failed_mutex);
+					parep_mpi_num_failed++;
+					pthread_cond_signal(&parep_mpi_barrier_count_cond);
+					pthread_mutex_unlock(&parep_mpi_num_failed_mutex);
+				}
 			}
 		} else {
 			if(local_proc_state[node_rank] != PROC_TERMINATED) {
@@ -3657,31 +3847,49 @@ void perform_cleanup() {
 	close(clientpollpair[1]);*/
 	//DEALLOCATION
 	if(isMainServer) {
-		free(daemon_socket);
-		free(parep_mpi_node_sizes);
-		free(rank_lims_all);
-		free(parep_mpi_all_ranks);
+		if(daemon_socket) free(daemon_socket);
+		if(parep_mpi_node_sizes) free(parep_mpi_node_sizes);
+		if(rank_lims_all) free(rank_lims_all);
+		if(parep_mpi_all_ranks) free(parep_mpi_all_ranks);
+		daemon_socket = NULL;
+		parep_mpi_node_sizes = NULL;
+		rank_lims_all = NULL;
+		parep_mpi_all_ranks = NULL;
 	} else if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
-		free(daemon_socket);
-		free(parep_mpi_node_sizes);
+		if(daemon_socket) free(daemon_socket);
+		if(parep_mpi_node_sizes) free(parep_mpi_node_sizes);
+		daemon_socket = NULL;
+		parep_mpi_node_sizes = NULL;
 	}
-	free(client_socket);
-	free(parep_mpi_ranks);
-	free(parep_mpi_pids);
+	if(client_socket) free(client_socket);
+	if(parep_mpi_ranks) free(parep_mpi_ranks);
+	if(parep_mpi_pids) free(parep_mpi_pids);
+	client_socket = NULL;
+	parep_mpi_ranks = NULL;
+	parep_mpi_pids = NULL;
 	
 	if(isMainServer) {
-		free(parep_mpi_global_pids);
-		free(global_proc_state);
-		free(daemon_state);
-		free(group_daemon_state);
-		free(coordinator_addr);
-		free(group_coordinator_addr);
+		if(parep_mpi_global_pids) free(parep_mpi_global_pids);
+		if(global_proc_state) free(global_proc_state);
+		if(daemon_state) free(daemon_state);
+		if(group_daemon_state) free(group_daemon_state);
+		if(coordinator_addr) free(coordinator_addr);
+		if(group_coordinator_addr) free(group_coordinator_addr);
+		parep_mpi_global_pids = NULL;
+		global_proc_state = NULL;
+		daemon_state = NULL;
+		group_daemon_state = NULL;
+		coordinator_addr = NULL;
+		group_coordinator_addr = NULL;
 	} else {
 		if(parep_mpi_node_group_nodeid == parep_mpi_node_group_leader_nodeid) {
-			free(group_coordinator_addr);
-			free(group_daemon_state);
+			if(group_coordinator_addr) free(group_coordinator_addr);
+			if(group_daemon_state) free(group_daemon_state);
+			group_coordinator_addr = NULL;
+			group_daemon_state = NULL;
 		}
-		free(local_proc_state);
+		if(local_proc_state) free(local_proc_state);
+		local_proc_state = NULL;
 	}
 	//lid_clean_maps();
 	//qp_clean_maps();
@@ -5674,6 +5882,10 @@ int main(int argc, char **argv) {
 		if(!strcmp(getenv("PAREP_MPI_COMPUTE_CKPT"),"1")) {
 			ckpt_interval = atoi(getenv("PAREP_MPI_CKPT_INTERVAL"));
 		}
+	}
+	
+	if(getenv("PAREP_MPI_CKPT_INTERVAL") != NULL) {
+		ckpt_interval = atoi(getenv("PAREP_MPI_CKPT_INTERVAL"));
 	}
 	
 	getrlimit(RLIMIT_NOFILE,&rlim_nofile);

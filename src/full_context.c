@@ -45,6 +45,7 @@ extern int parep_mpi_node_num;
 extern int parep_mpi_node_size;
 extern int parep_mpi_original_rank;
 extern int parep_mpi_baseline_rank;
+extern int parep_mpi_baseline_size;
 extern int cmp_ratio;
 extern int rep_ratio;
 extern int comp_per_rep;
@@ -1089,7 +1090,7 @@ off_t compute_ckpt_size() {
 
 void init_ckpt(char *file_name, bool is_baseline) {
 	if(is_baseline) {
-		char file[100];
+		char file[1024];
 		strcpy(file,file_name);
 		
 		compute_ckpt_size();
@@ -1243,7 +1244,7 @@ void init_ckpt(char *file_name, bool is_baseline) {
 
 void write_heap_and_stack(char *file_name) {
 	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-		char file[100];
+		char file[1024];
 		extern address __data_start;
 		extern address _edata;
 		extern address __bss_start;
@@ -1558,7 +1559,7 @@ static int read_one_memory_area(int fd, address endOfStack) {
 	
 	if ((map.pathname[0] && map.pathname[0] != '/' && parep_mpi_strstr(map.pathname, "stack")) || (map.end == endOfStack)) {
 		map.flags = map.flags | MAP_GROWSDOWN;
-  }
+	}
 	
 	if(map.flags & MAP_SHARED) {
 		char mydir[256];
@@ -1821,6 +1822,13 @@ static int read_one_memory_area(int fd, address endOfStack) {
 			parep_mpi_perform_read(fd,(void *)targaddr,map.end-map.start);
 		}
 		
+		if(map.end == pstat.cur_brk) {
+			if(pstat.cur_brk != (address)NULL) {
+				void *ret = parep_mpi_mremap((void *)targaddr,map.end-map.start,prstat.cur_brk-map.start,0,NULL);
+				map.end = prstat.cur_brk;
+			}
+		}
+		
 		if(map_to_temp) {
 			//parep_mpi_perform_write(1,"MARKING FOR REMAP\n",18);
 			if(map.pathname[0] != '\0') parep_mpi_perform_write(1,map.pathname,parep_mpi_strlen(map.pathname) + 1);
@@ -1855,7 +1863,7 @@ static void readmemoryareas(int fd, address endOfStack) {
 
 NO_OPTIMIZE
 void read_heap_and_stack(char *file_name) {
-	char file[100];
+	char file[1024];
 	extern address __data_start;
 	extern address _edata;
 	extern address __bss_start;
@@ -2278,6 +2286,7 @@ static void remap_and_cleanup() {
 		*((int *)(((address)(&parep_mpi_pmi_fd)) - (address)tempMap + pstat.restore_start)) = parep_mpi_pmi_fd;
 		
 		*((int *)(((address)(&parep_mpi_baseline_rank)) - (address)tempMap + pstat.restore_start)) = parep_mpi_baseline_rank;
+		*((int *)(((address)(&parep_mpi_baseline_size)) - (address)tempMap + pstat.restore_start)) = parep_mpi_baseline_size;
 		
 		*((int *)(((address)(&cmp_ratio)) - (address)tempMap + pstat.restore_start)) = cmp_ratio;
 		*((int *)(((address)(&rep_ratio)) - (address)tempMap + pstat.restore_start)) = rep_ratio;
@@ -2481,7 +2490,7 @@ void parep_mpi_thread_ckpt_wait(int tindex, int restore) {
 
 NO_OPTIMIZE
 void init_ckpt_restore(char *file_name) {
-	char file[100];
+	char file[1024];
 	
 	strcpy(file,file_name);
 	ckpt_fd = parep_mpi_open(file,O_RDONLY,0777);
@@ -2632,7 +2641,7 @@ void init_ckpt_restore(char *file_name) {
 }
 
 int does_ckpt_file_exists(char *file_name) {
-	char file[100];
+	char file[1024];
 	strcpy(file,file_name);
 
 	if(access(file, F_OK) != -1) {

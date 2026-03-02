@@ -26,6 +26,126 @@
    #error "what is happening here?"
 #endif
 
+int (*EMPI_Init)(int *, char ***);
+int (*EMPI_Finalize)();
+int (*EMPI_Comm_size)(EMPI_Comm,int *);
+int (*EMPI_Comm_remote_size)(EMPI_Comm,int *);
+int (*EMPI_Comm_rank)(EMPI_Comm,int *);
+int (*EMPI_Send)(void *,int,EMPI_Datatype,int,int,EMPI_Comm);
+int (*EMPI_Recv)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Status *);
+int (*EMPI_Comm_free)(EMPI_Comm *);
+int (*EMPI_Comm_dup)(EMPI_Comm,EMPI_Comm *);
+int (*EMPI_Comm_spawn)(const char *,char **,int,EMPI_Info,int,EMPI_Comm,int *);
+int (*EMPI_Barrier)(EMPI_Comm);
+int (*EMPI_Abort)(EMPI_Comm,int);
+int (*EMPI_Comm_group)(EMPI_Comm,EMPI_Group *);
+int (*EMPI_Group_size)(EMPI_Group,int *);
+int (*EMPI_Group_incl)(EMPI_Group,int,int *,EMPI_Group *);
+int (*EMPI_Group_union)(EMPI_Group,EMPI_Group,EMPI_Group *);
+int (*EMPI_Group_intersection)(EMPI_Group,EMPI_Group,EMPI_Group *);
+int (*EMPI_Group_difference)(EMPI_Group,EMPI_Group,EMPI_Group *);
+int (*EMPI_Group_translate_ranks)(EMPI_Group,int,int *,EMPI_Group,int *);
+int (*EMPI_Comm_create_group)(EMPI_Comm,EMPI_Group,int,EMPI_Comm *);
+int (*EMPI_Comm_split)(EMPI_Comm,int,int,EMPI_Comm *);
+int (*EMPI_Intercomm_create)(EMPI_Comm,int,EMPI_Comm,int,int,EMPI_Comm *);
+int (*EMPI_Comm_set_name)(EMPI_Comm,const char *);
+int (*EMPI_Bcast)(void *,int,EMPI_Datatype,int,EMPI_Comm);
+int (*EMPI_Allgather)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm);
+int (*EMPI_Alltoall)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm);
+int (*EMPI_Allgatherv)(void *,int,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm);
+int (*EMPI_Alltoallv)(void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm);
+int (*EMPI_Allreduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,EMPI_Comm);
+int (*EMPI_Isend)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Irecv)(void *,int,EMPI_Datatype,int,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Ibcast)(void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Iscatter)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Iscatterv)(const void *,int *,int *,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Igather)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Igatherv)(const void *,int,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Ireduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,int,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Iallgather)(const void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Iallgatherv)(const void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Ialltoall)(void *,int,EMPI_Datatype,void *,int,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Ialltoallv)(void *,int *,int *,EMPI_Datatype,void *,int *,int *,EMPI_Datatype,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Iallreduce)(void *,void *,int,EMPI_Datatype,EMPI_Op,EMPI_Comm,EMPI_Request *);
+int (*EMPI_Ibarrier)(EMPI_Comm,EMPI_Request *);
+int (*EMPI_Test)(EMPI_Request *,int *,EMPI_Status *);
+int (*EMPI_Wait)(EMPI_Request *,EMPI_Status *);
+int (*EMPI_Cancel)(EMPI_Request *);
+int (*EMPI_Probe)(int,int,EMPI_Comm,EMPI_Status *);
+int (*EMPI_Iprobe)(int,int,EMPI_Comm,int *,EMPI_Status *);
+int (*EMPI_Request_free)(EMPI_Request *);
+int (*EMPI_Type_size)(EMPI_Datatype,int *);
+int (*EMPI_Type_get_extent)(EMPI_Datatype, EMPI_Aint *, EMPI_Aint *);
+int (*EMPI_Get_count)(EMPI_Status *,EMPI_Datatype,int *);
+double (*EMPI_Wtime)();
+
+int (*EMPI_File_open)(EMPI_Comm, const char *, int, EMPI_Info, EMPI_File *);
+int (*EMPI_File_close)(EMPI_File *);
+int (*EMPI_File_set_view)(EMPI_File, EMPI_Offset, EMPI_Datatype, EMPI_Datatype, const char *, EMPI_Info);
+int (*EMPI_File_get_view)(EMPI_File, EMPI_Offset *, EMPI_Datatype *, EMPI_Datatype *, char *);
+int (*EMPI_File_seek)(EMPI_File, EMPI_Offset, int);
+int (*EMPI_File_seek_shared)(EMPI_File, EMPI_Offset, int);
+int (*EMPI_File_read_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_at)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_at)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_shared)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_shared)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_at_all)(EMPI_File, EMPI_Offset, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_at_all)(EMPI_File, EMPI_Offset, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iread_all)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_write_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_iwrite_all)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Request *);
+int (*EMPI_File_read_ordered)(EMPI_File, void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_read_ordered_begin)(EMPI_File, void *, int, EMPI_Datatype);
+int (*EMPI_File_read_ordered_end)(EMPI_File, void *, EMPI_Status *);
+int (*EMPI_File_write_ordered)(EMPI_File, const void *, int, EMPI_Datatype, EMPI_Status *);
+int (*EMPI_File_write_ordered_begin)(EMPI_File, const void *, int, EMPI_Datatype);
+int (*EMPI_File_write_ordered_end)(EMPI_File, const void *, EMPI_Status *);
+int (*EMPI_File_get_position)(EMPI_File, EMPI_Offset *);
+int (*EMPI_File_get_position_shared)(EMPI_File, EMPI_Offset *);
+
+int (*EMPI_Type_commit)(EMPI_Datatype *);
+int (*EMPI_Type_free)(EMPI_Datatype *);
+int (*EMPI_Type_contiguous)(int, EMPI_Datatype, EMPI_Datatype *);
+int (*EMPI_Type_vector)(int, int, int, EMPI_Datatype, EMPI_Datatype *);
+int (*EMPI_Type_create_resized)(EMPI_Datatype, EMPI_Aint, EMPI_Aint, EMPI_Datatype *);
+int (*EMPI_Type_create_subarray)(int, const int *, const int *, const int *, int, EMPI_Datatype, EMPI_Datatype *);
+
+int (*EMPI_File_sync)(EMPI_File fh);
+int (*EMPI_File_delete)(const char *, EMPI_Info);
+int (*EMPI_Get_processor_name)(char *, int *);
+
+int (*EMPI_Pack)(const void *, int, EMPI_Datatype, void *, int, int *, EMPI_Comm);
+int (*EMPI_Unpack)(const void *, int, int *, void *, int, EMPI_Datatype, EMPI_Comm);
+
+int (*EMPI_Comm_set_errhandler)(EMPI_Comm, EMPI_Errhandler);
+int (*EMPI_File_set_errhandler)(EMPI_File, EMPI_Errhandler);
+
+int *repToCmpMap, *cmpToRepMap;
+char extLibstr[256];
+pid_t parep_mpi_coordinator_pid;
+
+int nC,nR;
+int num_failures;
+double time_in_err_handler;
+EMPI_Comm parep_mpi_original_comm;
+MPI_Comm commarr[1024];
+MPI_Datatype dtarr[1024];
+MPI_Op oparr[1024];
+MPI_Request reqarr[1024];
+bool reqinuse[1024];
+
 double ___ckpt_time[MAX_CKPT];
 int ___ckpt_counter = -1;
 
@@ -164,6 +284,8 @@ bool peertopeerIsEmpty() {
 int parep_mpi_sendid = (int)0x70000000;
 int parep_mpi_collective_id = (int)0x70000000;
 
+int MPI_FT_MAX_IO_CHUNK_SIZE = 1073741824;
+
 int tagbase = 0;
 
 volatile sig_atomic_t parep_mpi_sighandling_state = 0;
@@ -194,6 +316,7 @@ int parep_mpi_node_num;
 int parep_mpi_node_size;
 int parep_mpi_original_rank;
 int parep_mpi_baseline_rank = -1;
+int parep_mpi_baseline_size = -1;
 int cmp_ratio = -1;
 int rep_ratio = -1;
 int comp_per_rep = -1;
@@ -217,6 +340,8 @@ extern int parep_mpi_prerecv_trigger_swap;
 extern time_t *parep_mpi_pred_list;
 
 extern volatile int end_wake_thread;
+
+bool replica_lost = false;
 
 int parep_mpi_coordinator_socket;
 struct sockaddr_un parep_mpi_coordinator_addr;
@@ -268,9 +393,10 @@ jmp_buf threadContext[10];
 Context threadprocContext[10];
 
 int num_threads = 0;
-pthread_mutex_t num_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t num_thread_mutex;
 pthread_cond_t num_thread_cond = PTHREAD_COND_INITIALIZER;
-pthread_t thread_tid[10];
+pthread_t thread_tid[20];
+bool thrd_detached[20];
 pid_t kernel_tid[10];
 bool signal_bcasted = false;
 bool entered_sighandler[10] = {false,false,false,false,false,false,false,false,false,false};
@@ -330,6 +456,10 @@ extern FILE *(*_real_fopen)(const char *, const char *);
 extern FILE *(*_real_fopen64)(const char *, const char *);
 
 extern int (*_real_pthread_create)(pthread_t *restrict,const pthread_attr_t *restrict,void *(*)(void *),void *restrict);
+extern int (*_real_pthread_join)(pthread_t, void **);
+extern int (*_real_pthread_detach)(pthread_t);
+extern void (*_real_pthread_exit)(void *);
+
 
 extern bin_t parep_mpi_bins[BIN_COUNT];
 extern bin_t parep_mpi_fastbins[FASTBIN_COUNT];
@@ -526,7 +656,7 @@ int MPI_Finalize(void) {
 				EMPI_Request rreq = EMPI_REQUEST_NULL;
 				int rflag = 0;
 				dst = N2_prev + rank;
-				EMPI_Irecv(&r,1,EMPI_BYTE,dst,639012,MPI_COMM_WORLD->eworldComm,&rreq);
+				EMPI_Irecv(&r,1,EMPI_BYTE,dst,MPI_FT_FINALIZE_TAG,MPI_COMM_WORLD->eworldComm,&rreq);
 				do {
 					if(parep_mpi_failed_proc_recv) {
 						pthread_mutex_unlock(&reqListLock);
@@ -549,8 +679,8 @@ int MPI_Finalize(void) {
 				EMPI_Request sreq = EMPI_REQUEST_NULL;
 				int rflag = 0;
 				int sflag = 0;
-				EMPI_Irecv(&r,1,EMPI_BYTE,dst,639012,MPI_COMM_WORLD->eworldComm,&rreq);
-				EMPI_Isend(&s,1,EMPI_BYTE,dst,639012,MPI_COMM_WORLD->eworldComm,&sreq);
+				EMPI_Irecv(&r,1,EMPI_BYTE,dst,MPI_FT_FINALIZE_TAG,MPI_COMM_WORLD->eworldComm,&rreq);
+				EMPI_Isend(&s,1,EMPI_BYTE,dst,MPI_FT_FINALIZE_TAG,MPI_COMM_WORLD->eworldComm,&sreq);
 				//if(d == 64) printf("%d: Last iteration dst %d rank %d\n",getpid(),dst,rank);
 				do {
 					if(parep_mpi_failed_proc_recv) {
@@ -594,7 +724,7 @@ int MPI_Finalize(void) {
 				EMPI_Request sreq = EMPI_REQUEST_NULL;
 				int sflag = 0;
 				src = N2_prev + rank;
-				EMPI_Isend(&s,1,EMPI_BYTE,src,639012,MPI_COMM_WORLD->eworldComm,&sreq);
+				EMPI_Isend(&s,1,EMPI_BYTE,src,MPI_FT_FINALIZE_TAG,MPI_COMM_WORLD->eworldComm,&sreq);
 				do {
 					if(parep_mpi_failed_proc_recv) {
 						pthread_mutex_unlock(&reqListLock);
@@ -617,8 +747,8 @@ int MPI_Finalize(void) {
 			EMPI_Request sreq = EMPI_REQUEST_NULL;
 			int rflag = 0;
 			int sflag = 0;
-			EMPI_Irecv(&r,1,EMPI_BYTE,src,639012,MPI_COMM_WORLD->eworldComm,&rreq);
-			EMPI_Isend(&s,1,EMPI_BYTE,src,639012,MPI_COMM_WORLD->eworldComm,&sreq);
+			EMPI_Irecv(&r,1,EMPI_BYTE,src,MPI_FT_FINALIZE_TAG,MPI_COMM_WORLD->eworldComm,&rreq);
+			EMPI_Isend(&s,1,EMPI_BYTE,src,MPI_FT_FINALIZE_TAG,MPI_COMM_WORLD->eworldComm,&sreq);
 			do {
 				if(parep_mpi_failed_proc_recv) {
 					pthread_mutex_unlock(&reqListLock);
@@ -672,7 +802,7 @@ int MPI_Finalize(void) {
 	
 	while(1);
 	
-	pthread_join(daemon_poller,NULL);
+	_real_pthread_join(daemon_poller,NULL);
 	
 	dlclose(extLib);
 	close(parep_mpi_coordinator_socket);
@@ -764,7 +894,7 @@ void parep_mpi_sigusr1_hook(int tid_index, bool is_main_thread,int restore) {
 }
 
 void handle_sigterm(int sig) {
-	pthread_exit(NULL);
+	_real_pthread_exit(NULL);
 }
 
 void *shrink_caller(void *arg) {
@@ -783,7 +913,7 @@ void *shrink_caller(void *arg) {
 int parep_mpi_checkpoint_init(int ckpt_num) {
 	parep_mpi_ckpt_wait = 0;
 	___ckpt_counter = ckpt_num;
-	char ckpt_name[100];
+	char ckpt_name[1024];
 	int rank;
 	bool is_baseline = true;
 	struct stat st = {0};
@@ -1193,6 +1323,9 @@ PAREP_MPI_WRITE_CKPT_START:
 						int nCdiff = 0;
 						bool aborting = false;
 						bool switching_to_cmp = false;
+						bool lost_cand = false;
+						if(myrank >= nC) lost_cand = true;
+						else if(cmpToRepMap[myrank] != -1) lost_cand = true;
 						for (int j = 0; j < num_failed_procs_current; j++) {
 							if(myrank >= nC) {
 								if (repToCmpMap[myrank-nC] == failed_ranks[j]) switching_to_cmp = true;
@@ -1240,6 +1373,12 @@ PAREP_MPI_WRITE_CKPT_START:
 						
 						redoshrink = false;
 						
+						if(lost_cand) {
+							if(myrank >= nC) {
+								if(switching_to_cmp) replica_lost = true;
+							} else if(cmpToRepMap[myrank] == -1) replica_lost = true;
+						}
+						
 						_real_free(worldComm_ranks);
 						_real_free(rankadj);
 						_real_free(rankadjrep);
@@ -1277,12 +1416,12 @@ PAREP_MPI_WRITE_CKPT_START:
 							assert(msg == 1234);
 							close(shrinkpipe[0]);
 							close(shrinkpipe[1]);
-							pthread_join(shrinkthread,NULL);
+							_real_pthread_join(shrinkthread,NULL);
 						} else if(shrinkfds[0].revents & POLLIN) {
 							if(pollret >= 2) pollret = 1;
 							redoshrink = true;
 							pthread_kill(shrinkthread,SIGTERM);
-							pthread_join(shrinkthread,NULL);
+							_real_pthread_join(shrinkthread,NULL);
 							close(shrinkpipe[0]);
 							close(shrinkpipe[1]);
 						}
@@ -1705,7 +1844,7 @@ PAREP_MPI_WRITE_CKPT_START:
 		pthread_mutex_lock(&parep_mpi_leader_rank_mutex);
 		if(rank == parep_mpi_leader_rank) {
 			FILE *fptr;
-			char file[100];
+			char file[1024];
 			sprintf(file,"%s/latest_ckpt",getenv("PAREP_MPI_WORKDIR"));
 			fptr = _real_fopen(file, "wb");
 			fwrite(&___ckpt_counter, sizeof(int), 1, fptr);
@@ -1791,6 +1930,12 @@ PAREP_MPI_WRITE_CKPT_START:
 		if(parep_mpi_baseline_rank >= 0) {
 			char rank_str[256];
 			sprintf(rank_str,"%d",parep_mpi_baseline_rank);
+			setenv("PMI_RANK",rank_str,1);
+		}
+		
+		if(parep_mpi_baseline_size >= 0) {
+			char rank_str[256];
+			sprintf(rank_str,"%d",parep_mpi_baseline_size);
 			setenv("PMI_SIZE",rank_str,1);
 		}
 		
@@ -2329,7 +2474,7 @@ int MPI_Checkpoint_start() {
 void parep_mpi_checkpoint_restore() {
 	parep_mpi_restore = 0;
 	parep_mpi_restore_wait = 0;
-	char ckpt_name[100];
+	char ckpt_name[1024];
 	int ckpt_num;
 	int rank;
 	bool ckpt_restore = true;
@@ -2337,7 +2482,7 @@ void parep_mpi_checkpoint_restore() {
 	if(___ckpt_counter <= 0) rank = parep_mpi_rank;
 	else EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&rank);
 	FILE *fptr;
-	char file[100];
+	char file[1024];
 	sprintf(file,"%s/latest_ckpt",getenv("PAREP_MPI_WORKDIR"));
 	fptr = _real_fopen(file, "rb");
 	if(fptr == NULL) {
@@ -2412,8 +2557,7 @@ void parep_mpi_checkpoint_restore() {
 				prstat.restore_start = mappings[i].start;
 				prstat.restore_start_map = i;
 				strcpy(pc_map,mappings[i].pathname);
-			}
-			else if(strcmp(pc_map,"NULL")) {
+			} else if(strcmp(pc_map,"NULL")) {
 				if((!strcmp(pc_map,mappings[i].pathname)) && (mappings[i].prot & PROT_READ) && (mappings[i].prot & PROT_WRITE) && (related_map == -1)) {
 					prstat.restore_end = mappings[i].end;
 					/*for(address start = mappings[i].start; start < mappings[i].end; start += 8) {
@@ -2485,6 +2629,7 @@ void parep_mpi_checkpoint_restore() {
 
 void parep_mpi_restore_messages() {
 	int myrank,cmprank=-1,reprank=-1;
+	int proberet;
 	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_CMP,&cmprank);
 	else if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_REP,&reprank);
@@ -2497,130 +2642,18 @@ void parep_mpi_restore_messages() {
 		if(amode & MPI_MODE_EXCL) amode = amode & (~MPI_MODE_EXCL);
 		if((amode & MPI_MODE_WRONLY) || (amode & MPI_MODE_RDWR)) amode = amode | MPI_MODE_APPEND;
 		retVal = EMPI_File_open(curfile->comm->eworldComm, curfile->filename, amode, curfile->info, &(curfile->efh));
-		retVal = EMPI_File_open(curfile->comm->eworldComm, curfile->filename, amode, curfile->info, &(curfile->rdfh));
 		retVal = EMPI_File_open(curfile->comm->pairComm, curfile->filename, amode, curfile->info, &(curfile->pairfh));
-		retVal = EMPI_File_open(EMPI_COMM_SELF, curfile->filename, amode, curfile->info, &(curfile->repfh));
+		EMPI_File_set_errhandler(curfile->efh,EMPI_ERRORS_RETURN);
+		EMPI_File_set_errhandler(curfile->pairfh,EMPI_ERRORS_RETURN);
 		MPI_Offset disp = curfile->real_view.disp;
 		MPI_Datatype etype = curfile->real_view.etype;
 		MPI_Datatype filetype = curfile->real_view.filetype;
-		if(filetype->edatatype == etype->edatatype) {
-			retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			retVal = EMPI_File_set_view(curfile->rdfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			retVal = EMPI_File_set_view(curfile->pairfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-		} else if(filetype->type == MPI_FT_CONTIG) {
-			EMPI_Type_free(&(filetype->pairdttype));
-			EMPI_Type_contiguous(filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, etype->edatatype, &(filetype->pairdttype));
-			EMPI_Type_commit(&(filetype->pairdttype));
-			EMPI_Datatype temp;
-			if(curfile->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-				if(cmpToRepMap[cmprank] != -1) {
-					EMPI_Type_contiguous((filetype->args.mpi_dt_contiguous.count/2) * filetype->args.mpi_dt_contiguous.oldtype->size, etype->edatatype, &temp);
-					EMPI_Type_commit(&temp);
-					EMPI_Type_free(&(filetype->iodttype));
-					EMPI_Type_create_resized(temp, 0, filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, &(filetype->iodttype));
-					EMPI_Type_commit(&(filetype->iodttype));
-					EMPI_Type_free(&temp);
-				} else {
-					EMPI_Type_free(&(filetype->iodttype));
-					EMPI_Type_contiguous(filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, etype->edatatype, &(filetype->iodttype));
-					EMPI_Type_commit(&(filetype->iodttype));
-				}
-			} else if(curfile->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-				EMPI_Type_contiguous((filetype->args.mpi_dt_contiguous.count/2) * filetype->args.mpi_dt_contiguous.oldtype->size, etype->edatatype, &temp);
-				EMPI_Type_commit(&temp);
-				EMPI_Type_create_resized(temp, 0, filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, &(filetype->iodttype));
-				EMPI_Type_free(&(filetype->iodttype));
-				EMPI_Type_commit(&(filetype->iodttype));
-				EMPI_Type_free(&temp);
-			}
-			
-			curfile->real_view.filetype->bufdttype = curfile->real_view.filetype->iodttype;
-			if(curfile->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-				retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			} else if(curfile->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-				retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp + (filetype->args.mpi_dt_contiguous.count/2 * filetype->args.mpi_dt_contiguous.oldtype->size), curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			}
-			retVal = EMPI_File_set_view(curfile->rdfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			retVal = EMPI_File_set_view(curfile->pairfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-		} else if(filetype->type == MPI_FT_VECTOR) {
-			EMPI_Type_free(&(filetype->pairdttype));
-			EMPI_Type_vector(filetype->args.mpi_dt_vector.count, filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size, etype->edatatype, &(filetype->pairdttype));
-			EMPI_Type_commit(&(filetype->pairdttype));
-			if(curfile->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-				if(cmpToRepMap[cmprank] != -1) {
-					EMPI_Type_free(&(filetype->iodttype));
-					EMPI_Type_vector((filetype->args.mpi_dt_vector.count/2), filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * 2 * filetype->args.mpi_dt_vector.oldtype->size, etype->edatatype, &(filetype->iodttype));
-					EMPI_Type_commit(&(filetype->iodttype));
-				} else {
-					EMPI_Type_free(&(filetype->iodttype));
-					EMPI_Type_vector(filetype->args.mpi_dt_vector.count, filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size, etype->edatatype, &(filetype->iodttype));
-					EMPI_Type_commit(&(filetype->iodttype));
-				}
-			} else if(curfile->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-				EMPI_Type_free(&(filetype->iodttype));
-				EMPI_Type_vector((filetype->args.mpi_dt_vector.count/2), filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * 2 * filetype->args.mpi_dt_vector.oldtype->size, etype->edatatype, &(filetype->iodttype));
-				EMPI_Type_commit(&(filetype->iodttype));
-			}
-			if(curfile->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-				retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			} else if(curfile->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-				retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp + (filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size), curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			}
-			retVal = EMPI_File_set_view(curfile->rdfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			retVal = EMPI_File_set_view(curfile->pairfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-		} else if(filetype->type == MPI_FT_SUBARRAY) {
-			if(parep_mpi_evensplit) {
-			} else {
-				int ndims = filetype->args.mpi_dt_subarray.ndims;
-				int *temp_sizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-				int *temp_subsizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-				int *temp_starts = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-				int split_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? 0 : ndims-1;
-				int data_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? ndims-1 : 0;
-				for(int i = 0; i < ndims; i++) {
-					int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
-					temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
-					temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
-					temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
-					if(i == split_dim) {
-						if(curfile->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-							if(cmpToRepMap[cmprank] != -1) {
-								temp_subsizes[i] = (filetype->args.mpi_dt_subarray.array_of_subsizes[i] - (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2)) * multiplier;
-							}
-						} else if(curfile->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-							temp_subsizes[i] = (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2) * multiplier;
-							temp_starts[i] = (filetype->args.mpi_dt_subarray.array_of_starts[i] + (filetype->args.mpi_dt_subarray.array_of_subsizes[i] - (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2))) * multiplier;
-						}
-					}
-				}
-				EMPI_Type_free(&(filetype->iodttype));
-				EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, etype->edatatype, &(filetype->iodttype));
-				EMPI_Type_commit(&(filetype->iodttype));
-				for(int i = 0; i < ndims; i++) {
-					int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
-					temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
-					temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
-					temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
-				}
-				EMPI_Type_free(&(filetype->pairdttype));
-				EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, etype->edatatype, &(filetype->pairdttype));
-				EMPI_Type_commit(&(filetype->pairdttype));
-				parep_mpi_free(temp_sizes);
-				parep_mpi_free(temp_subsizes);
-				parep_mpi_free(temp_starts);
-				retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-				retVal = EMPI_File_set_view(curfile->rdfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-				retVal = EMPI_File_set_view(curfile->pairfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->pairdttype, curfile->real_view.datarep, EMPI_INFO_NULL);
-			}
-		}
+		retVal = EMPI_File_set_view(curfile->efh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
+		retVal = EMPI_File_set_view(curfile->pairfh, curfile->real_view.disp, curfile->real_view.etype->edatatype, curfile->real_view.filetype->iodttype, curfile->real_view.datarep, EMPI_INFO_NULL);
 		EMPI_File_seek(curfile->efh, curfile->fp, EMPI_SEEK_SET);
-		EMPI_File_seek(curfile->rdfh, curfile->fp, EMPI_SEEK_SET);
 		EMPI_File_seek(curfile->pairfh, curfile->fp, EMPI_SEEK_SET);
-		EMPI_File_seek(curfile->repfh, curfile->fp, EMPI_SEEK_SET);
 		EMPI_File_seek_shared(curfile->efh, curfile->fpsh, EMPI_SEEK_SET);
-		EMPI_File_seek_shared(curfile->rdfh, curfile->fpsh, EMPI_SEEK_SET);
 		EMPI_File_seek_shared(curfile->pairfh, curfile->fpsh, EMPI_SEEK_SET);
-		EMPI_File_seek_shared(curfile->repfh, curfile->fpsh, EMPI_SEEK_SET);
 	}
 	
 	for(reqNode *start = reqHead; start != NULL; start = start->next) {
@@ -2644,73 +2677,33 @@ void parep_mpi_restore_messages() {
 					
 					int empi_entered_state = parep_mpi_empi_entered;
 					parep_mpi_empi_entered = true;
-					if(fh->real_view.filetype->edatatype == fh->real_view.etype->edatatype) {
-						EMPI_Aint lb,extent;
-						int totalsize, iosize;
-						EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
-						totalsize = extent*count;
-						MPI_Offset offset;
-						EMPI_File_get_position(fh->efh, &offset);
-						if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-							if(cmpToRepMap[cmprank] != -1) iosize = totalsize - (totalsize/2);
-							else iosize = totalsize;
-							retVal = EMPI_File_iwrite_at_all(fh->efh, offset, buf, iosize, EMPI_BYTE, req->reqcmp);
-						} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-							iosize = (totalsize/2);
-							offset += totalsize - iosize;
-							retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(totalsize-iosize)), iosize, EMPI_BYTE, req->reqcmp);
-						}
-					} else if(fh->real_view.filetype->type == MPI_FT_VECTOR) {
-						EMPI_Aint lb,extent;
-						int totalsize, iosize;
-						int start_offset = 0;
-						EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
-						totalsize = extent*count;
-						if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-							if(cmpToRepMap[cmprank] != -1) {
-								iosize = totalsize - (totalsize/2);
-								int count = iosize / (fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size);
-								EMPI_Type_free(&(fh->real_view.filetype->bufdttype));
-								EMPI_Type_vector(count, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.filetype->args.mpi_dt_vector.blocklength * 2 * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->bufdttype));
-								EMPI_Type_commit(&(fh->real_view.filetype->bufdttype));
-							} else {
-								iosize = totalsize;
-								int count = iosize / (fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size);
-								EMPI_Type_free(&(fh->real_view.filetype->bufdttype));
-								EMPI_Type_vector(count, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->bufdttype));
-								EMPI_Type_commit(&(fh->real_view.filetype->bufdttype));
-							}
-						} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-							iosize = (totalsize/2);
-							if(fh->real_view.filetype->type == MPI_FT_CONTIG) start_offset = totalsize-iosize;
-							start_offset = fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->extent;
-							int count = iosize / (fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size);
-							EMPI_Type_free(&(fh->real_view.filetype->bufdttype));
-							EMPI_Type_vector(count, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.filetype->args.mpi_dt_vector.blocklength * 2 * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->bufdttype));
-							EMPI_Type_commit(&(fh->real_view.filetype->bufdttype));
-						}
-						retVal = EMPI_File_iwrite_all(fh->efh, (((char *)buf)+(start_offset)), 1, fh->real_view.filetype->bufdttype, req->reqcmp);
-					} else if(fh->real_view.filetype->type == MPI_FT_SUBARRAY) {
-						int start_offset = 0;
-						if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-							if(cmpToRepMap[cmprank] != -1) {
-								iosize = totalsize - (totalsize/2);
-							} else {
-								iosize = totalsize;
-							}
-						} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-							start_offset = totalsize - (totalsize/2);
-							iosize = (totalsize/2);
-						}
-						MPI_Offset offset;
-						EMPI_File_get_position(fh->efh, &offset);
-						retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(start_offset)), iosize, fh->real_view.etype->edatatype, req->reqcmp);
+					EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
+					totalsize = extent*count;
+					MPI_Offset offset;
+					EMPI_File_get_position(fh->efh, &offset);
+					if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+						if(cmpToRepMap[cmprank] != -1) iosize = totalsize - (totalsize/2);
+						else iosize = totalsize;
+						if(replica_lost) (req->status).count = ((req->status).count * 2);
+						offset += (req->status).count;
+						int remain = iosize - (req->status).count;
+						int trunc_size;
+						if(cmpToRepMap[cmprank] != -1) trunc_size = (remain > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : remain;
+						else trunc_size = (remain > MPI_FT_MAX_IO_CHUNK_SIZE) ? MPI_FT_MAX_IO_CHUNK_SIZE : remain;
+						retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+((req->status).count)), trunc_size, EMPI_BYTE, req->reqcmp);
+					} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
+						iosize = (totalsize/2);
+						offset += (totalsize - iosize + (req->status).count);
+						int remain = iosize - (req->status).count;
+						int trunc_size = (remain > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : remain;
+						retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(totalsize-iosize+(req->status).count)), trunc_size, EMPI_BYTE, req->reqcmp);
 					}
 					parep_mpi_empi_entered = empi_entered_state;
 				}
 			}
 		}
 	}
+	replica_lost = false;
 
 	int *sendnums = (int *)_real_malloc((nC+nR)*sizeof(int));
 	int *recvnums = (int *)_real_malloc((nC+nR)*sizeof(int));
@@ -3467,16 +3460,20 @@ void parep_mpi_restore_messages() {
 					EMPI_Status stat;
 					do {
 						MPI_Comm comm = MPI_COMM_WORLD;
-						if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-						else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+						proberet = EMPI_SUCCESS;
+						if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+						else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+						if(proberet != EMPI_SUCCESS) flag = 0;
 						if(flag) {
 							pthread_rwlock_unlock(&commLock);
 							do {
 								progressed = test_all_ptp_requests();
 							} while(progressed);
 							pthread_rwlock_rdlock(&commLock);
-							if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-							else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+							proberet = EMPI_SUCCESS;
+							if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+							else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+							if(proberet != EMPI_SUCCESS) flag = 0;
 							if(flag == 0) {
 								flag = 1;
 								continue;
@@ -3551,14 +3548,18 @@ void parep_mpi_restore_messages() {
 					EMPI_Status stat;
 					do {
 						MPI_Comm comm = MPI_COMM_WORLD;
-						EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+						proberet = EMPI_SUCCESS;
+						proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+						if(proberet != EMPI_SUCCESS) flag = 0;
 						if(flag) {
 							pthread_rwlock_unlock(&commLock);
 							do {
 								progressed = test_all_ptp_requests();
 							} while(progressed);
 							pthread_rwlock_rdlock(&commLock);
-							EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+							proberet = EMPI_SUCCESS;
+							proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+							if(proberet != EMPI_SUCCESS) flag = 0;
 							if(flag == 0) {
 								flag = 1;
 								continue;
@@ -4386,9 +4387,15 @@ void initialize_mpi_variables() {
 	EMPI_Type_create_resized = (int(*)(EMPI_Datatype, EMPI_Aint, EMPI_Aint, EMPI_Datatype *))dlsym(extLib,"MPI_Type_create_resized");
 	EMPI_Type_create_subarray = (int(*)(int, const int *, const int *, const int *, int, EMPI_Datatype, EMPI_Datatype *))dlsym(extLib,"MPI_Type_create_subarray");
 	
+	EMPI_Pack = (int(*)(const void *, int, EMPI_Datatype, void *, int, int *, EMPI_Comm))dlsym(extLib,"MPI_Pack");
+	EMPI_Unpack = (int(*)(const void *, int, int *, void *, int, EMPI_Datatype, EMPI_Comm))dlsym(extLib,"MPI_Unpack");
+	
 	EMPI_File_sync = (int(*)(EMPI_File fh))dlsym(extLib,"MPI_File_sync");
 	EMPI_File_delete = (int(*)(const char *, EMPI_Info))dlsym(extLib,"MPI_File_delete");
 	EMPI_Get_processor_name = (int(*)(char *, int *))dlsym(extLib,"MPI_Get_processor_name");
+
+	EMPI_Comm_set_errhandler = (int(*)(EMPI_Comm, EMPI_Errhandler))dlsym(extLib,"MPI_Comm_set_errhandler");
+	EMPI_File_set_errhandler = (int(*)(EMPI_File, EMPI_Errhandler))dlsym(extLib,"MPI_File_set_errhandler");
 	
 	/*_ext_free = (void(*)(void *))dlsym(extLib,"free");
 	_ext_malloc = (void *(*)(size_t))dlsym(extLib,"malloc");
@@ -4482,6 +4489,11 @@ int empi_comm_creation(int *rank, int *size, int *argc, char ***argv, bool poll_
 		parep_mpi_evensplit = false;
 	}
 	
+	if(getenv("PAREP_MPI_MAX_IO_CHUNK_SIZE") != NULL) {
+		int temp = atoi(getenv("PAREP_MPI_MAX_IO_CHUNK_SIZE"));
+		MPI_FT_MAX_IO_CHUNK_SIZE = temp;
+	}
+	
 	cmpToRepMap = (int *) libc_malloc (nC * sizeof (int));
 	repToCmpMap = (int *) libc_malloc (nR * sizeof (int));
 
@@ -4522,6 +4534,13 @@ int empi_comm_creation(int *rank, int *size, int *argc, char ***argv, bool poll_
 		EMPI_Comm_dup(MPI_COMM_WORLD->eworldComm,&(MPI_COMM_WORLD->EMPI_CMP_NO_REP));
 		EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, worldRank, 0, &(MPI_COMM_WORLD->pairComm));
 	}
+	EMPI_Comm_set_errhandler(MPI_COMM_WORLD->eworldComm,EMPI_ERRORS_RETURN);
+	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_COMM_CMP,EMPI_ERRORS_RETURN);
+	if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_COMM_REP,EMPI_ERRORS_RETURN);
+	if(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_ERRORS_RETURN);
+	if(MPI_COMM_WORLD->EMPI_CMP_NO_REP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_NO_REP,EMPI_ERRORS_RETURN);
+	if(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM,EMPI_ERRORS_RETURN);
+	if(MPI_COMM_WORLD->pairComm != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->pairComm,EMPI_ERRORS_RETURN);
 
 	int myrank,mysize;
 	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
@@ -5162,7 +5181,8 @@ int MPI_Init (int *argc, char ***argv) {
 	if(_real_free == NULL) _real_free = dlsym(RTLD_NEXT,"free");
 	if(_real_malloc == NULL) _real_malloc = dlsym(RTLD_NEXT,"malloc");
 	
-	if(getenv("PMI_SIZE") != NULL) parep_mpi_baseline_rank = atoi(getenv("PMI_SIZE"));
+	if(getenv("PMI_RANK") != NULL) parep_mpi_baseline_rank = atoi(getenv("PMI_RANK"));
+	if(getenv("PMI_SIZE") != NULL) parep_mpi_baseline_size = atoi(getenv("PMI_SIZE"));
 	
 	if((getenv("CMP_RATIO") != NULL) && (getenv("REP_RATIO") != NULL)) {
 		int cr = atoi(getenv("CMP_RATIO"));
@@ -5177,11 +5197,17 @@ int MPI_Init (int *argc, char ***argv) {
 	num_threads = 0;
 	
 	int tid_index;
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&num_thread_mutex, &attr);
+	pthread_mutexattr_destroy(&attr); 
 	pthread_mutex_lock(&num_thread_mutex);
 	tid_index = num_threads;
 	num_threads++;
-	pthread_mutex_unlock(&num_thread_mutex);
 	thread_tid[tid_index] = pthread_self();
+	thrd_detached[tid_index] = false;
+	pthread_mutex_unlock(&num_thread_mutex);
 	set_signal_handler(SIGUSR1);
 	parep_mpi_restore = 1;
 	parep_mpi_restore_wait = 1;
@@ -5390,10 +5416,6 @@ int MPI_Init (int *argc, char ***argv) {
 	
 	parep_mpi_leader_rank = 0;
 	
-	pthread_create(&daemon_poller,NULL,polling_daemon,NULL);
-	
-	while(parep_mpi_polling_started == 0);
-	
 	parep_mpi_pmi_fd = (getenv("PMI_FD") == NULL) ? -1 : atoi(getenv("PMI_FD"));
 	if(parep_mpi_pmi_fd != -1) {
 		if(parep_mpi_pmi_fd != PAREP_MPI_PMI_FD) {
@@ -5405,6 +5427,10 @@ int MPI_Init (int *argc, char ***argv) {
 		}
 	}
 	parep_mpi_kvs_name[0] = '\0';
+	
+	pthread_create(&daemon_poller,NULL,polling_daemon,NULL);
+	
+	while(parep_mpi_polling_started == 0);
 	
 	//parseSockInfo();
 	parep_mpi_validator_pipe_check = 1;
@@ -7401,15 +7427,13 @@ int MPI_Test (MPI_Request *req, int *flag, MPI_Status *status) {
 				case MPI_FT_READ_REQUEST:
 					transferred = status->count;
 					EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-					EMPI_File_seek(((MPI_File)ftreq->bufloc)->rdfh, transferred, MPI_SEEK_CUR);
 					((MPI_File)ftreq->bufloc)->fp += transferred;
 					break;
 				case MPI_FT_WRITE_REQUEST:
 					transferred = ftreq->totalio;
 					EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-					EMPI_File_seek(((MPI_File)ftreq->bufloc)->rdfh, transferred, MPI_SEEK_CUR);
 					EMPI_File_seek(((MPI_File)ftreq->bufloc)->pairfh, transferred, MPI_SEEK_CUR);
-					((MPI_File)ftreq->bufloc)->fp += transferred;
+					EMPI_File_get_position(((MPI_File)ftreq->bufloc)->efh, &(((MPI_File)ftreq->bufloc)->fp));
 					break;
 				case MPI_FT_READ_ALL_REQUEST:
 					transferred = status->count;
@@ -7419,16 +7443,9 @@ int MPI_Test (MPI_Request *req, int *flag, MPI_Status *status) {
 					break;
 				case MPI_FT_WRITE_ALL_REQUEST:
 					transferred = ftreq->totalio;
-					if(((MPI_File)(ftreq->bufloc))->real_view.etype->edatatype == ((MPI_File)(ftreq->bufloc))->real_view.filetype->edatatype) {
-						EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-					} else if(((MPI_File)(ftreq->bufloc))->real_view.filetype->type == MPI_FT_VECTOR) {
-						EMPI_Type_free(&(((MPI_File)(ftreq->bufloc))->real_view.filetype->bufdttype));
-					} else {
-						EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-					}
-					EMPI_File_seek(((MPI_File)ftreq->bufloc)->rdfh, transferred, MPI_SEEK_CUR);
+					EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
 					EMPI_File_seek(((MPI_File)ftreq->bufloc)->pairfh, transferred, MPI_SEEK_CUR);
-					((MPI_File)ftreq->bufloc)->fp += transferred;
+					EMPI_File_get_position(((MPI_File)ftreq->bufloc)->efh, &(((MPI_File)ftreq->bufloc)->fp));
 					break;
 				case MPI_FT_READ_SHARED_REQUEST:
 					((MPI_File)ftreq->bufloc)->fpsh += transferred;
@@ -7480,7 +7497,7 @@ int MPI_Wait (MPI_Request *req, MPI_Status *status) {
 			parep_mpi_sighandling_state = 0;
 			//end_wake_thread = 1;
 			pthread_mutex_unlock(&reqListLock);
-			//pthread_join(waitWaker,NULL);
+			//_real_pthread_join(waitWaker,NULL);
 			parep_mpi_ckpt_wait = 1;
 			pthread_kill(pthread_self(),SIGUSR1);
 			while(parep_mpi_ckpt_wait) {;}
@@ -7495,7 +7512,7 @@ int MPI_Wait (MPI_Request *req, MPI_Status *status) {
 	/*else if(parep_mpi_sighandling_state == 2) {
 		end_wake_thread = 1;
 		pthread_mutex_unlock(&reqListLock);
-		pthread_join(waitWaker,NULL);
+		_real_pthread_join(waitWaker,NULL);
 		pthread_mutex_lock(&reqListLock);
 	}*/
 	if(status != MPI_STATUS_IGNORE) {
@@ -7527,15 +7544,13 @@ int MPI_Wait (MPI_Request *req, MPI_Status *status) {
 			case MPI_FT_READ_REQUEST:
 				transferred = status->count;
 				EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-				EMPI_File_seek(((MPI_File)ftreq->bufloc)->rdfh, transferred, MPI_SEEK_CUR);
 				((MPI_File)ftreq->bufloc)->fp += transferred;
 				break;
 			case MPI_FT_WRITE_REQUEST:
 				transferred = ftreq->totalio;
 				EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-				EMPI_File_seek(((MPI_File)ftreq->bufloc)->rdfh, transferred, MPI_SEEK_CUR);
 				EMPI_File_seek(((MPI_File)ftreq->bufloc)->pairfh, transferred, MPI_SEEK_CUR);
-				((MPI_File)ftreq->bufloc)->fp += transferred;
+				EMPI_File_get_position(((MPI_File)ftreq->bufloc)->efh, &(((MPI_File)ftreq->bufloc)->fp));
 				break;
 			case MPI_FT_READ_ALL_REQUEST:
 				transferred = status->count;
@@ -7545,16 +7560,9 @@ int MPI_Wait (MPI_Request *req, MPI_Status *status) {
 				break;
 			case MPI_FT_WRITE_ALL_REQUEST:
 				transferred = ftreq->totalio;
-				if(((MPI_File)(ftreq->bufloc))->real_view.etype->edatatype == ((MPI_File)(ftreq->bufloc))->real_view.filetype->edatatype) {
-					EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-				} else if(((MPI_File)(ftreq->bufloc))->real_view.filetype->type == MPI_FT_VECTOR) {
-					EMPI_Type_free(&(((MPI_File)(ftreq->bufloc))->real_view.filetype->bufdttype));
-				} else {
-					EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
-				}
-				EMPI_File_seek(((MPI_File)ftreq->bufloc)->rdfh, transferred, MPI_SEEK_CUR);
+				EMPI_File_seek(((MPI_File)ftreq->bufloc)->efh, transferred, MPI_SEEK_CUR);
 				EMPI_File_seek(((MPI_File)ftreq->bufloc)->pairfh, transferred, MPI_SEEK_CUR);
-				((MPI_File)ftreq->bufloc)->fp += transferred;
+				EMPI_File_get_position(((MPI_File)ftreq->bufloc)->efh, &(((MPI_File)ftreq->bufloc)->fp));
 				break;
 			case MPI_FT_READ_SHARED_REQUEST:
 				((MPI_File)ftreq->bufloc)->fpsh += transferred;
@@ -9802,9 +9810,11 @@ int MPI_File_open(MPI_Comm comm, const char *filename, int amode, MPI_Info info,
 	MPI_File ftfh = (MPI_File)parep_mpi_malloc(sizeof(struct mpi_ft_file));
 	
 	retVal = EMPI_File_open(comm->eworldComm, filename, amode, info, &(ftfh->efh));
-	retVal = EMPI_File_open(comm->eworldComm, filename, amode, info, &(ftfh->rdfh));
+	//retVal = EMPI_File_open(comm->eworldComm, filename, amode, info, &(ftfh->rdfh));
 	retVal = EMPI_File_open(comm->pairComm, filename, amode, info, &(ftfh->pairfh));
-	retVal = EMPI_File_open(EMPI_COMM_SELF, filename, amode, info, &(ftfh->repfh));
+	//retVal = EMPI_File_open(EMPI_COMM_SELF, filename, amode, info, &(ftfh->repfh));
+	EMPI_File_set_errhandler(ftfh->efh,EMPI_ERRORS_RETURN);
+	EMPI_File_set_errhandler(ftfh->pairfh,EMPI_ERRORS_RETURN);
 	ftfh->comm = comm;
 	strcpy(ftfh->filename,filename);
 	ftfh->amode = amode;
@@ -9813,7 +9823,6 @@ int MPI_File_open(MPI_Comm comm, const char *filename, int amode, MPI_Info info,
 	ftfh->real_view.filetype = (MPI_Datatype)parep_mpi_malloc(sizeof(struct mpi_ft_datatype));
 	EMPI_File_get_view(ftfh->efh,&(ftfh->real_view.disp),&(ftfh->real_view.etype->edatatype),&(ftfh->real_view.filetype->edatatype),(ftfh->real_view.datarep));
 	ftfh->real_view.filetype->iodttype = ftfh->real_view.filetype->edatatype;
-	ftfh->real_view.filetype->pairdttype = ftfh->real_view.filetype->edatatype;
 	ftfh->real_view.etype->type = -1;
 	ftfh->real_view.filetype->type = -1;
 	ftfh->real_view.etype->size = 1;
@@ -9854,17 +9863,10 @@ int MPI_File_close(MPI_File *fh) {
 	MPI_File ftfh = *fh;
 	
 	if((*fh)->real_view.filetype->type >= 0) {
-		if((*fh)->real_view.filetype->type == MPI_FT_VECTOR) {
-			retVal = EMPI_Type_free(&((*fh)->real_view.filetype->iodttype));
-			retVal = EMPI_Type_free(&((*fh)->real_view.filetype->pairdttype));
-		} else if((*fh)->real_view.filetype->type == MPI_FT_SUBARRAY) {
-			retVal = EMPI_Type_free(&((*fh)->real_view.filetype->pairdttype));
-		}
+		retVal = EMPI_Type_free(&((*fh)->real_view.filetype->iodttype));
 	}
 	retVal = EMPI_File_close(&(ftfh->efh));
-	retVal = EMPI_File_close(&(ftfh->rdfh));
 	retVal = EMPI_File_close(&(ftfh->pairfh));
-	retVal = EMPI_File_close(&(ftfh->repfh));
 	
 	parep_mpi_free(ftfh->real_view.etype);
 	if((*fh)->real_view.filetype->type < 0) parep_mpi_free(ftfh->real_view.filetype);
@@ -9907,200 +9909,55 @@ int MPI_File_set_view(MPI_File fh, MPI_Offset disp, MPI_Datatype etype, MPI_Data
 		fh->real_view.etype->edatatype = EMPI_BYTE;
 		fh->real_view.filetype->edatatype = EMPI_BYTE;
 		fh->real_view.filetype->iodttype = EMPI_BYTE;
-		fh->real_view.filetype->pairdttype = EMPI_BYTE;
 		strcpy(fh->real_view.datarep,datarep);
 		retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-		retVal = EMPI_File_set_view(fh->rdfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
+		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
 	} else if(filetype->type == MPI_FT_CONTIG) {
 		fh->real_view.disp = disp;
 		fh->real_view.etype->edatatype = EMPI_BYTE;
 		parep_mpi_free(fh->real_view.filetype);
 		fh->real_view.filetype = filetype;
-		EMPI_Type_contiguous(filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->pairdttype));
-		EMPI_Type_commit(&(fh->real_view.filetype->pairdttype));
-		EMPI_Datatype temp;
-		pthread_rwlock_rdlock(&commLock);
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			if(cmpToRepMap[myrank] != -1) {
-				EMPI_Type_contiguous((filetype->args.mpi_dt_contiguous.count/2) * filetype->args.mpi_dt_contiguous.oldtype->size, fh->real_view.etype->edatatype, &temp);
-				EMPI_Type_commit(&temp);
-				EMPI_Type_create_resized(temp, 0, filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, &(fh->real_view.filetype->iodttype));
-				EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-				EMPI_Type_free(&temp);
-			} else {
-				EMPI_Type_contiguous(filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
-				EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-			}
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			EMPI_Type_contiguous((filetype->args.mpi_dt_contiguous.count/2) * filetype->args.mpi_dt_contiguous.oldtype->size, fh->real_view.etype->edatatype, &temp);
-			EMPI_Type_commit(&temp);
-			EMPI_Type_create_resized(temp, 0, filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, &(fh->real_view.filetype->iodttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-			EMPI_Type_free(&temp);
-		}
+		EMPI_Type_contiguous(filetype->args.mpi_dt_contiguous.count * filetype->args.mpi_dt_contiguous.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
+		EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
 		strcpy(fh->real_view.datarep,datarep);
-		
-		fh->real_view.filetype->bufdttype = fh->real_view.filetype->iodttype;
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp + (filetype->args.mpi_dt_contiguous.count/2 * filetype->args.mpi_dt_contiguous.oldtype->size), fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-		}
-		retVal = EMPI_File_set_view(fh->rdfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-		pthread_rwlock_unlock(&commLock);
+		retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
+		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
 	} else if(filetype->type == MPI_FT_VECTOR) {
 		fh->real_view.disp = disp;
 		fh->real_view.etype->edatatype = EMPI_BYTE;
 		parep_mpi_free(fh->real_view.filetype);
 		fh->real_view.filetype = filetype;
-		EMPI_Type_vector(filetype->args.mpi_dt_vector.count, filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->pairdttype));
-		EMPI_Type_commit(&(fh->real_view.filetype->pairdttype));
-		pthread_rwlock_rdlock(&commLock);
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			if(cmpToRepMap[myrank] != -1) {
-				EMPI_Type_vector((filetype->args.mpi_dt_vector.count/2), filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * 2 * filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
-				EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-			} else {
-				EMPI_Type_vector(filetype->args.mpi_dt_vector.count, filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
-				EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-			}
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			EMPI_Type_vector((filetype->args.mpi_dt_vector.count/2), filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * 2 * filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-		}
+		EMPI_Type_vector(filetype->args.mpi_dt_vector.count, filetype->args.mpi_dt_vector.blocklength * filetype->args.mpi_dt_vector.oldtype->size, filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
+		EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
 		strcpy(fh->real_view.datarep,datarep);
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp + (filetype->args.mpi_dt_vector.stride * filetype->args.mpi_dt_vector.oldtype->size), fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-		}
-		retVal = EMPI_File_set_view(fh->rdfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-		pthread_rwlock_unlock(&commLock);
+		retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
+		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
 	} else if(filetype->type == MPI_FT_SUBARRAY) {
-		if(parep_mpi_evensplit) {
-			fh->real_view.disp = disp;
-			fh->real_view.etype->edatatype = EMPI_BYTE;
-			parep_mpi_free(fh->real_view.filetype);
-			fh->real_view.filetype = filetype;
-			strcpy(fh->real_view.datarep,datarep);
-			pthread_rwlock_rdlock(&commLock);
-			int ndims = filetype->args.mpi_dt_subarray.ndims;
-			int *temp_sizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-			int *temp_subsizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-			int *temp_starts = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-			int split_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? 0 : ndims-1;
-			int data_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? ndims-1 : 0;
-			for(int i = 0; i < ndims; i++) {
-				int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
-				temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
-				temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
-				temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
-				if(i == split_dim) {
-					if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-						if(cmpToRepMap[myrank] != -1) {
-							temp_subsizes[i] = (filetype->args.mpi_dt_subarray.array_of_subsizes[i] - (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2)) * multiplier;
-						}
-					} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-						temp_subsizes[i] = (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2) * multiplier;
-						temp_starts[i] = (filetype->args.mpi_dt_subarray.array_of_starts[i] + (filetype->args.mpi_dt_subarray.array_of_subsizes[i] - (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2))) * multiplier;
-					}
-				}
-			}
-			EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-			for(int i = 0; i < ndims; i++) {
-				int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
-				temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
-				temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
-				temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
-			}
-			EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, fh->real_view.etype->edatatype, &(fh->real_view.filetype->pairdttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->pairdttype));
-			if(nC - nR <= nR) {
-				if((fh->comm->EMPI_CMP_NO_REP != EMPI_COMM_NULL) && (fh->comm->EMPI_CMP_NO_REP_INTERCOMM != EMPI_COMM_NULL)) {
-					int cmpnoreprank;
-					EMPI_Comm_rank(fh->comm->EMPI_CMP_NO_REP, &cmpnoreprank);
-					EMPI_Send(&ndims, 1, EMPI_INT, cmpnoreprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM);
-					EMPI_Send(temp_sizes, ndims, EMPI_INT, cmpnoreprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM);
-					EMPI_Send(temp_subsizes, ndims, EMPI_INT, cmpnoreprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM);
-					EMPI_Send(temp_starts, ndims, EMPI_INT, cmpnoreprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM);
-				} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-					int reprank;
-					EMPI_Comm_rank(fh->comm->EMPI_COMM_REP, &reprank);
-					if(reprank < nC-nR) {
-						EMPI_Recv(&ndims, 1, EMPI_INT, reprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM, EMPI_STATUS_IGNORE);
-						EMPI_Recv(temp_sizes, ndims, EMPI_INT, reprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM, EMPI_STATUS_IGNORE);
-						EMPI_Recv(temp_subsizes, ndims, EMPI_INT, reprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM, EMPI_STATUS_IGNORE);
-						EMPI_Recv(temp_starts, ndims, EMPI_INT, reprank, MPI_FT_IOINFO_TAG, fh->comm->EMPI_CMP_NO_REP_INTERCOMM, EMPI_STATUS_IGNORE);
-						temp_starts[split_dim] = temp_starts[split_dim] + temp_subsizes[split_dim] - (temp_subsizes[split_dim]/4);
-						temp_subsizes[split_dim] = temp_subsizes[split_dim]/4;
-						EMPI_Datatype temptype;
-						EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, fh->real_view.etype->edatatype, &temptype);
-						EMPI_Type_commit(&temptype);
-						retVal = EMPI_File_set_view(fh->repfh, fh->real_view.disp, fh->real_view.etype->edatatype, temptype, fh->real_view.datarep, info);
-						EMPI_Type_free(&temptype);
-					}
-				}
-			}
-			parep_mpi_free(temp_sizes);
-			parep_mpi_free(temp_subsizes);
-			parep_mpi_free(temp_starts);
-			
-			retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-			retVal = EMPI_File_set_view(fh->rdfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-			retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-			pthread_rwlock_unlock(&commLock);
-		} else {
-			fh->real_view.disp = disp;
-			fh->real_view.etype->edatatype = EMPI_BYTE;
-			parep_mpi_free(fh->real_view.filetype);
-			fh->real_view.filetype = filetype;
-			pthread_rwlock_rdlock(&commLock);
-			int ndims = filetype->args.mpi_dt_subarray.ndims;
-			int *temp_sizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-			int *temp_subsizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-			int *temp_starts = (int *)parep_mpi_malloc(sizeof(int)*ndims);
-			int split_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? 0 : ndims-1;
-			int data_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? ndims-1 : 0;
-			for(int i = 0; i < ndims; i++) {
-				int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
-				temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
-				temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
-				temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
-				if(i == split_dim) {
-					if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-						if(cmpToRepMap[myrank] != -1) {
-							temp_subsizes[i] = (filetype->args.mpi_dt_subarray.array_of_subsizes[i] - (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2)) * multiplier;
-						}
-					} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-						temp_subsizes[i] = (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2) * multiplier;
-						temp_starts[i] = (filetype->args.mpi_dt_subarray.array_of_starts[i] + (filetype->args.mpi_dt_subarray.array_of_subsizes[i] - (filetype->args.mpi_dt_subarray.array_of_subsizes[i]/2))) * multiplier;
-					}
-				}
-			}
-			EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
-			for(int i = 0; i < ndims; i++) {
-				int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
-				temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
-				temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
-				temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
-			}
-			EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, fh->real_view.etype->edatatype, &(fh->real_view.filetype->pairdttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->pairdttype));
-			parep_mpi_free(temp_sizes);
-			parep_mpi_free(temp_subsizes);
-			parep_mpi_free(temp_starts);
-			
-			strcpy(fh->real_view.datarep,datarep);
-			retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
-			retVal = EMPI_File_set_view(fh->rdfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-			retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->pairdttype, fh->real_view.datarep, info);
-			pthread_rwlock_unlock(&commLock);
+		fh->real_view.disp = disp;
+		fh->real_view.etype->edatatype = EMPI_BYTE;
+		parep_mpi_free(fh->real_view.filetype);
+		fh->real_view.filetype = filetype;
+		int ndims = filetype->args.mpi_dt_subarray.ndims;
+		int *temp_sizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
+		int *temp_subsizes = (int *)parep_mpi_malloc(sizeof(int)*ndims);
+		int *temp_starts = (int *)parep_mpi_malloc(sizeof(int)*ndims);
+		int split_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? 0 : ndims-1;
+		int data_dim = (filetype->args.mpi_dt_subarray.order == MPI_ORDER_C) ? ndims-1 : 0;
+		for(int i = 0; i < ndims; i++) {
+			int multiplier = (i == data_dim) ? filetype->args.mpi_dt_subarray.oldtype->size : 1;
+			temp_sizes[i] = filetype->args.mpi_dt_subarray.array_of_sizes[i] * multiplier;
+			temp_subsizes[i] = filetype->args.mpi_dt_subarray.array_of_subsizes[i] * multiplier;
+			temp_starts[i] = filetype->args.mpi_dt_subarray.array_of_starts[i] * multiplier;
 		}
+		EMPI_Type_create_subarray(ndims, temp_sizes, temp_subsizes, temp_starts, filetype->args.mpi_dt_subarray.order, fh->real_view.etype->edatatype, &(fh->real_view.filetype->iodttype));
+		EMPI_Type_commit(&(fh->real_view.filetype->iodttype));
+		parep_mpi_free(temp_sizes);
+		parep_mpi_free(temp_subsizes);
+		parep_mpi_free(temp_starts);
+		
+		strcpy(fh->real_view.datarep,datarep);
+		retVal = EMPI_File_set_view(fh->efh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
+		retVal = EMPI_File_set_view(fh->pairfh, fh->real_view.disp, fh->real_view.etype->edatatype, fh->real_view.filetype->iodttype, fh->real_view.datarep, info);
 	}
 	
 	if(parep_mpi_sighandling_state == 2) {
@@ -10132,9 +9989,8 @@ int MPI_File_seek(MPI_File fh, MPI_Offset disp, int whence) {
 	real_offset = disp*size;
 	
 	retVal = EMPI_File_seek(fh->efh, real_offset, whence);
-	retVal = EMPI_File_seek(fh->rdfh, real_offset, whence);
 	retVal = EMPI_File_seek(fh->pairfh, real_offset, whence);
-	fh->fp += real_offset;
+	retVal = EMPI_File_get_position(fh->efh, &(fh->fp));
 	
 	if(parep_mpi_sighandling_state == 2) {
 		parep_mpi_sighandling_state = 0;
@@ -10165,9 +10021,8 @@ int MPI_File_seek_shared(MPI_File fh, MPI_Offset disp, int whence) {
 	real_offset = disp*size;
 	
 	retVal = EMPI_File_seek_shared(fh->efh, real_offset, whence);
-	retVal = EMPI_File_seek_shared(fh->rdfh, real_offset, whence);
 	retVal = EMPI_File_seek_shared(fh->pairfh, real_offset, whence);
-	fh->fpsh += real_offset;
+	retVal = EMPI_File_get_position_shared(fh->efh, &(fh->fpsh));
 	
 	if(parep_mpi_sighandling_state == 2) {
 		parep_mpi_sighandling_state = 0;
@@ -11129,11 +10984,7 @@ int MPI_File_iread_all(MPI_File fh, void *buf, int count, MPI_Datatype datatype,
 	ftreq->comm = fh->comm;
 	
 	parep_mpi_empi_entered = true;
-	if(fh->real_view.filetype->edatatype == fh->real_view.etype->edatatype) {
-		retVal = EMPI_File_iread_all(fh->efh, buf, count, datatype->edatatype, ftreq->reqcmp);
-	} else {
-		retVal = EMPI_File_iread_all(fh->rdfh, buf, count, datatype->edatatype, ftreq->reqcmp);
-	}
+	retVal = EMPI_File_iread_all(fh->efh, buf, count, datatype->edatatype, ftreq->reqcmp);
 	parep_mpi_empi_entered = false;
 	
 	pthread_rwlock_unlock(&commLock);
@@ -11158,6 +11009,9 @@ int MPI_File_iread_all(MPI_File fh, void *buf, int count, MPI_Datatype datatype,
 }
 
 int MPI_File_iwrite_all_even(MPI_File fh, const void *buf, int count, MPI_Datatype datatype, MPI_Request *req) {
+	return MPI_File_iwrite_all(fh, buf, count, datatype, req);
+}
+/*int MPI_File_iwrite_all_even(MPI_File fh, const void *buf, int count, MPI_Datatype datatype, MPI_Request *req) {
 	bool int_call;
 	int retVal;
 	
@@ -11289,7 +11143,7 @@ int MPI_File_iwrite_all_even(MPI_File fh, const void *buf, int count, MPI_Dataty
 	if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
 	
 	return MPI_SUCCESS;
-}
+}*/
 
 int MPI_File_iwrite_all(MPI_File fh, const void *buf, int count, MPI_Datatype datatype, MPI_Request *req) {
 	bool int_call;
@@ -11314,6 +11168,7 @@ int MPI_File_iwrite_all(MPI_File fh, const void *buf, int count, MPI_Datatype da
 	ftreq->complete = false;
 	ftreq->type = MPI_FT_WRITE_REQUEST;
 	ftreq->iotype = MPI_FT_WRITE_ALL_REQUEST;
+	(ftreq->status).count = 0;
 	EMPI_Aint lb,extent;
 	int totalsize, iosize;
 	EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
@@ -11330,64 +11185,25 @@ int MPI_File_iwrite_all(MPI_File fh, const void *buf, int count, MPI_Datatype da
 	ftreq->comm = fh->comm;
 	
 	parep_mpi_empi_entered = true;
-	if(fh->real_view.filetype->edatatype == fh->real_view.etype->edatatype) {
-		EMPI_Aint lb,extent;
-		int totalsize, iosize;
-		EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
-		totalsize = extent*count;
-		MPI_Offset offset;
-		EMPI_File_get_position(fh->efh, &offset);
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			if(cmpToRepMap[myrank] != -1) iosize = totalsize - (totalsize/2);
-			else iosize = totalsize;
-			retVal = EMPI_File_iwrite_at_all(fh->efh, offset, buf, iosize, EMPI_BYTE, ftreq->reqcmp);
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			iosize = (totalsize/2);
-			offset += totalsize - iosize;
-			retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(totalsize-iosize)), iosize, EMPI_BYTE, ftreq->reqcmp);
+	EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
+	totalsize = extent*count;
+	MPI_Offset offset;
+	EMPI_File_get_position(fh->efh, &offset);
+	if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
+		int trunc_size;
+		if(cmpToRepMap[myrank] != -1) {
+			iosize = totalsize - (totalsize/2);
+			trunc_size = (iosize > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : iosize;
+		} else {
+			iosize = totalsize;
+			trunc_size = (iosize > MPI_FT_MAX_IO_CHUNK_SIZE) ? MPI_FT_MAX_IO_CHUNK_SIZE : iosize;
 		}
-	} else if(fh->real_view.filetype->type == MPI_FT_VECTOR) {
-		EMPI_Aint lb,extent;
-		int totalsize, iosize;
-		int start_offset = 0;
-		EMPI_Type_get_extent(datatype->edatatype,&lb,&extent);
-		totalsize = extent*count;
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			if(cmpToRepMap[myrank] != -1) {
-				iosize = totalsize - (totalsize/2);
-				int count = iosize / (fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size);
-				EMPI_Type_vector(count, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.filetype->args.mpi_dt_vector.blocklength * 2 * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->bufdttype));
-				EMPI_Type_commit(&(fh->real_view.filetype->bufdttype));
-			} else {
-				iosize = totalsize;
-				int count = iosize / (fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size);
-				EMPI_Type_vector(count, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->bufdttype));
-				EMPI_Type_commit(&(fh->real_view.filetype->bufdttype));
-			}
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			iosize = (totalsize/2);
-			if(fh->real_view.filetype->type == MPI_FT_CONTIG) start_offset = totalsize-iosize;
-			start_offset = fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->extent;
-			int count = iosize / (fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size);
-			EMPI_Type_vector(count, fh->real_view.filetype->args.mpi_dt_vector.blocklength * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.filetype->args.mpi_dt_vector.blocklength * 2 * fh->real_view.filetype->args.mpi_dt_vector.oldtype->size, fh->real_view.etype->edatatype, &(fh->real_view.filetype->bufdttype));
-			EMPI_Type_commit(&(fh->real_view.filetype->bufdttype));
-		}
-		retVal = EMPI_File_iwrite_all(fh->efh, (((char *)buf)+(start_offset)), 1, fh->real_view.filetype->bufdttype, ftreq->reqcmp);
-	} else if(fh->real_view.filetype->type == MPI_FT_SUBARRAY) {
-		int start_offset = 0;
-		if(fh->comm->EMPI_COMM_CMP != EMPI_COMM_NULL) {
-			if(cmpToRepMap[myrank] != -1) {
-				iosize = totalsize - (totalsize/2);
-			} else {
-				iosize = totalsize;
-			}
-		} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
-			start_offset = totalsize - (totalsize/2);
-			iosize = (totalsize/2);
-		}
-		MPI_Offset offset;
-		EMPI_File_get_position(fh->efh, &offset);
-		retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(start_offset)), iosize, fh->real_view.etype->edatatype, ftreq->reqcmp);
+		retVal = EMPI_File_iwrite_at_all(fh->efh, offset, buf, trunc_size, EMPI_BYTE, ftreq->reqcmp);
+	} else if(fh->comm->EMPI_COMM_REP != EMPI_COMM_NULL) {
+		iosize = (totalsize/2);
+		offset += totalsize - iosize;
+		int trunc_size = (iosize > (MPI_FT_MAX_IO_CHUNK_SIZE/2)) ? (MPI_FT_MAX_IO_CHUNK_SIZE/2) : iosize;
+		retVal = EMPI_File_iwrite_at_all(fh->efh, offset, (((char *)buf)+(totalsize-iosize)), trunc_size, EMPI_BYTE, ftreq->reqcmp);
 	}
 	parep_mpi_empi_entered = false;
 	pthread_rwlock_unlock(&commLock);
@@ -11773,12 +11589,62 @@ int MPI_File_sync(MPI_File fh) {
 	return MPI_SUCCESS;
 }
 
+int MPI_Pack(const void *inbuf, int incount, MPI_Datatype datatype, void *outbuf, int outsize, int *position, MPI_Comm comm) {
+	bool int_call;
+	int retVal;
+	if(pthread_self() == thread_tid[0]) {
+		int_call = parep_mpi_internal_call;
+		parep_mpi_internal_call = true;
+	}
+	parep_mpi_sighandling_state = 1;
+	
+	retVal = EMPI_Pack(inbuf, incount, datatype->edatatype, outbuf, outsize, position, comm->eworldComm);
+	
+	if(parep_mpi_sighandling_state == 2) {
+		parep_mpi_sighandling_state = 0;
+		parep_mpi_ckpt_wait = 1;
+		pthread_kill(pthread_self(),SIGUSR1);
+		while(parep_mpi_ckpt_wait) {;}
+	}
+	parep_mpi_sighandling_state = 0;
+	if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
+	
+	return MPI_SUCCESS;
+}
+
+int MPI_Unpack(const void *inbuf, int insize, int *position, void *outbuf, int outcount, MPI_Datatype datatype, MPI_Comm comm) {
+	bool int_call;
+	int retVal;
+	if(pthread_self() == thread_tid[0]) {
+		int_call = parep_mpi_internal_call;
+		parep_mpi_internal_call = true;
+	}
+	parep_mpi_sighandling_state = 1;
+	
+	retVal = EMPI_Unpack(inbuf, insize, position, outbuf, outcount, datatype->edatatype, comm->eworldComm);
+	
+	if(parep_mpi_sighandling_state == 2) {
+		parep_mpi_sighandling_state = 0;
+		parep_mpi_ckpt_wait = 1;
+		pthread_kill(pthread_self(),SIGUSR1);
+		while(parep_mpi_ckpt_wait) {;}
+	}
+	parep_mpi_sighandling_state = 0;
+	if(pthread_self() == thread_tid[0]) parep_mpi_internal_call = int_call;
+	
+	return MPI_SUCCESS;
+}
+
 int MPI_File_delete(const char *filename, MPI_Info info) {
 	return EMPI_File_delete(filename, info);
 }
 
 double MPI_Wtime() {
-  return EMPI_Wtime();
+	double etime;
+	struct timespec curtime;
+	clock_gettime(CLOCK_REALTIME,&curtime);
+	etime = (timespec_to_double(curtime)-timespec_to_double(mpi_ft_start_time));
+	return etime;
 }
 
 int MPI_Get_processor_name(char *name, int *resultlen) {

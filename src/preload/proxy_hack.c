@@ -199,7 +199,8 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
 	if(real_read == NULL) {
 		real_read = dlsym(RTLD_NEXT,"read");
 	}
-	if(!getenv("PAREP_MPI_PROXY_HACKED") || strcmp(getenv("PAREP_MPI_PROXY_HACKED"),"1")) return real_poll(fds,nfds,timeout);
+	const char *env_val = getenv("PAREP_MPI_PROXY_HACKED");
+	if((env_val == NULL) || (strcmp(env_val,"1") != 0)) return real_poll(fds,nfds,timeout);
 	
 	pthread_mutex_lock(&serv_addr_mutex);
 	if(!server_addr_set) {
@@ -506,7 +507,8 @@ ssize_t read(int fd, void *buf, size_t count) {
 	if(real_read == NULL) {
 		real_read = dlsym(RTLD_NEXT,"read");
 	}
-	if(!getenv("PAREP_MPI_PROXY_HACKED") || strcmp(getenv("PAREP_MPI_PROXY_HACKED"),"1")) return real_read(fd,buf,count);
+	const char *env_val = getenv("PAREP_MPI_PROXY_HACKED");
+	if((env_val == NULL) || (strcmp(env_val,"1") != 0)) return real_read(fd,buf,count);
 	
 	int pre_errno = errno;
 	ssize_t readret;
@@ -534,7 +536,8 @@ pid_t waitpid(pid_t pid, int *status, int options) {
 	if(real_read == NULL) {
 		real_read = dlsym(RTLD_NEXT,"read");
 	}
-	if(!getenv("PAREP_MPI_PROXY_HACKED") || strcmp(getenv("PAREP_MPI_PROXY_HACKED"),"1")) return real_waitpid(pid,status,options);
+	const char *env_val = getenv("PAREP_MPI_PROXY_HACKED");
+	if((env_val == NULL) || (strcmp(env_val,"1") != 0)) return real_waitpid(pid,status,options);
 	pthread_mutex_lock(&serv_addr_mutex);
 	if(!server_addr_set) {
 		memset(&server_addr,0,sizeof(server_addr));

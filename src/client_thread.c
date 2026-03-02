@@ -4,6 +4,10 @@
 #include "request_handler.h"
 #include <math.h>
 
+pthread_t daemon_poller;
+pthread_t comm_shrinker;
+EMPI_Group parep_mpi_original_group;
+
 extern double timespec_to_double(struct timespec);
 extern struct timespec mpi_ft_start_time;
 extern struct timespec mpi_ft_end_time;
@@ -26,6 +30,9 @@ extern int parep_mpi_leader_rank;
 extern pthread_mutex_t parep_mpi_leader_rank_mutex;
 
 extern int (*_real_pthread_create)(pthread_t *restrict,const pthread_attr_t *restrict,void *(*)(void *),void *restrict);
+extern int (*_real_pthread_join)(pthread_t, void **);
+extern int (*_real_pthread_detach)(pthread_t);
+extern void (*_real_pthread_exit)(void *);
 extern void *(*_real_malloc)(size_t);
 extern void (*_real_free)(void *);
 
@@ -37,6 +44,8 @@ extern reqNode *reqTail;
 
 extern pthread_mutex_t reqListLock;
 extern pthread_cond_t reqListCond;
+
+extern bool replica_lost;
 
 recvDataNode *recvDataHead = NULL;
 recvDataNode *recvDataTail = NULL;
@@ -97,6 +106,8 @@ double parep_mpi_pred_mean = 0;
 double parep_mpi_M2 = 0.0;
 double parep_mpi_pred_std = 0;
 double parep_mpi_stat_count = 0;
+
+int parep_mpi_proc_diverge = 0;
 
 void update_stats(int val) {
 	parep_mpi_stat_count++;
@@ -270,7 +281,7 @@ void *comm_shrink(void * arg) {
 	thread_active = 0;
 	pthread_cond_signal(&thread_active_cond);
 	pthread_mutex_unlock(&thread_active_mutex);
-	pthread_exit(NULL);
+	_real_pthread_exit(NULL);
 }
 
 bool num_in_array(int *arr,int arr_size,int num) {
@@ -290,6 +301,7 @@ int failed_proc_check() {
 	pfd.events = POLLIN;
 	nfds_t nfds = 1;
 	int pollret = -1;
+	int proberet;
 	
 	pollret = poll(&pfd,nfds,0);
 	if(pollret > 0) {
@@ -301,7 +313,10 @@ int failed_proc_check() {
 				msgsize += bytes_read;
 				if(msgsize >= (sizeof(int))) break;
 			}
-			if((cmd != CMD_INFORM_PROC_FAILED) && (cmd != CMD_INFORM_PREDICT) || (cmd == CMD_INFORM_PREDICT_NODE)) printf("%d: Got cmd %d during rem recv\n",getpid(),cmd);
+			if((cmd != CMD_INFORM_PROC_FAILED) && (cmd != CMD_INFORM_PREDICT) || (cmd == CMD_INFORM_PREDICT_NODE)) {
+				printf("%d: Got cmd %d during rem recv parep_mpi_store_buf_sz %ld\n",getpid(),cmd,parep_mpi_store_buf_sz);
+				while(1);
+			}
 			assert((cmd == CMD_INFORM_PROC_FAILED) || (cmd == CMD_INFORM_PREDICT) || (cmd == CMD_INFORM_PREDICT_NODE));
 			if(cmd == CMD_INFORM_PROC_FAILED) {
 				int num_failed_procs;
@@ -389,8 +404,10 @@ int failed_proc_check() {
 								EMPI_Status stat;
 								do {
 									MPI_Comm comm = MPI_COMM_WORLD;
-									if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-									else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+									proberet = EMPI_SUCCESS;
+									if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+									else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+									if(proberet != EMPI_SUCCESS) flag = 0;
 									if(flag) {
 										pthread_mutex_unlock(&peertopeerLock);
 										pthread_rwlock_unlock(&commLock);
@@ -399,8 +416,10 @@ int failed_proc_check() {
 										} while(progressed);
 										pthread_rwlock_rdlock(&commLock);
 										pthread_mutex_lock(&peertopeerLock);
-										if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-										else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+										proberet = EMPI_SUCCESS;
+										if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+										else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+										if(proberet != EMPI_SUCCESS) flag = 0;
 										if(flag == 0) {
 											flag = 1;
 											continue;
@@ -477,7 +496,9 @@ int failed_proc_check() {
 								EMPI_Status stat;
 								do {
 									MPI_Comm comm = MPI_COMM_WORLD;
-									EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+									proberet = EMPI_SUCCESS;
+									proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+									if(proberet != EMPI_SUCCESS) flag = 0;
 									if(flag) {
 										pthread_mutex_unlock(&collectiveLock);
 										pthread_rwlock_unlock(&commLock);
@@ -486,7 +507,9 @@ int failed_proc_check() {
 										} while(progressed);
 										pthread_rwlock_rdlock(&commLock);
 										pthread_mutex_lock(&collectiveLock);
-										EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+										proberet = EMPI_SUCCESS;
+										proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+										if(proberet != EMPI_SUCCESS) flag = 0;
 										if(flag == 0) {
 											flag = 1;
 											continue;
@@ -609,7 +632,9 @@ int failed_proc_check() {
 								EMPI_Status stat;
 								do {
 									MPI_Comm comm = MPI_COMM_WORLD;
-									EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+									proberet = EMPI_SUCCESS;
+									proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+									if(proberet != EMPI_SUCCESS) flag = 0;
 									if(flag) {
 										pthread_mutex_unlock(&peertopeerLock);
 										pthread_rwlock_unlock(&commLock);
@@ -618,7 +643,9 @@ int failed_proc_check() {
 										} while(progressed);
 										pthread_rwlock_rdlock(&commLock);
 										pthread_mutex_lock(&peertopeerLock);
-										EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+										proberet = EMPI_SUCCESS;
+										proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+										if(proberet != EMPI_SUCCESS) flag = 0;
 										if(flag == 0) {
 											flag = 1;
 											continue;
@@ -694,6 +721,9 @@ int failed_proc_check() {
 				int nCdiff = 0;
 				bool aborting = false;
 				bool switching_to_cmp = false;
+				bool lost_cand = false;
+				if(myrank >= nC) lost_cand = true;
+				else if(cmpToRepMap[myrank] != -1) lost_cand = true;
 				for (int j = 0; j < num_failed_procs_current;j++) {
 					if(myrank >= nC) {
 						if (repToCmpMap[myrank-nC] == failed_ranks[j]) switching_to_cmp = true;
@@ -737,6 +767,12 @@ int failed_proc_check() {
 				}
 				else {
 					EMPI_Group_difference(current_group,current_failed_group,&current_alive_group);
+				}
+				
+				if(lost_cand) {
+					if(myrank >= nC) {
+						if(switching_to_cmp) replica_lost = true;
+					} else if(cmpToRepMap[myrank] == -1) replica_lost = true;
 				}
 				
 				_real_free(worldComm_ranks);
@@ -835,6 +871,13 @@ int failed_proc_check() {
 					MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM = EMPI_COMM_NULL;
 					EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, newrank, 0, &(MPI_COMM_WORLD->pairComm));
 				}
+				EMPI_Comm_set_errhandler(MPI_COMM_WORLD->eworldComm,EMPI_ERRORS_RETURN);
+				if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_COMM_CMP,EMPI_ERRORS_RETURN);
+				if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_COMM_REP,EMPI_ERRORS_RETURN);
+				if(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_ERRORS_RETURN);
+				if(MPI_COMM_WORLD->EMPI_CMP_NO_REP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_NO_REP,EMPI_ERRORS_RETURN);
+				if(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM,EMPI_ERRORS_RETURN);
+				if(MPI_COMM_WORLD->pairComm != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->pairComm,EMPI_ERRORS_RETURN);
 				
 				printf("Shrink completed from failed_proc_check newrank %d parep_mpi_rank %d new leader rank %d\n",newrank,parep_mpi_rank,parep_mpi_leader_rank);
 				parep_mpi_restore_messages();
@@ -1145,6 +1188,7 @@ int failed_proc_check() {
 int handle_rem_recv_no_poll() {
 	int ret = 0;
 	int myrank,cmprank=-1,reprank=-1;
+	int testret;
 	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_CMP,&cmprank);
 	else if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_REP,&reprank);
@@ -1206,8 +1250,8 @@ int handle_rem_recv_no_poll() {
 			ret = 1;
 			goto EXIT_ALLTOALL;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	allrecvids = (int *)malloc(array_sum(recvnums,nC+nR)*sizeof(int));
 	allsendids = (int *)malloc(array_sum(recvfrommenums,nC+nR)*sizeof(int));
@@ -1264,8 +1308,8 @@ int handle_rem_recv_no_poll() {
 			ret = 1;
 			goto EXIT_ALLTOALLV;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -1343,8 +1387,8 @@ int handle_rem_recv_no_poll() {
 			ret = 1;
 			goto EXIT_ALLTOALLV;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -1420,8 +1464,8 @@ int handle_rem_recv_no_poll() {
 			ret = 1;
 			goto EXIT_ALLTOALLV;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	minid = collids[0];
 	for(int i = 0; i < nC+nR; i++) {
@@ -1452,6 +1496,7 @@ EXIT_ALLTOALL:
 
 int handle_rem_recv_with_tests() {
 	int ret = 0;
+	int testret;
 	int myrank,cmprank=-1,reprank=-1;
 	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_CMP,&cmprank);
@@ -1466,7 +1511,7 @@ int handle_rem_recv_with_tests() {
 	bool completed = false;
 	clcdata *last_completed_collective;
 	clcdata *cdata;
-	int minid;
+	int minid,maxid;
 	
 	int *allrecvids;
 	int *allsendids;
@@ -1500,8 +1545,8 @@ int handle_rem_recv_with_tests() {
 			goto EXIT_ALLTOALL;
 		}
 		test_all_requests_no_lock();
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	allrecvids = (int *)malloc(array_sum(recvnums,nC+nR)*sizeof(int));
 	allsendids = (int *)malloc(array_sum(recvfrommenums,nC+nR)*sizeof(int));	
@@ -1543,8 +1588,8 @@ int handle_rem_recv_with_tests() {
 			goto EXIT_ALLTOALLV;
 		}
 		test_all_requests_no_lock();
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -1607,8 +1652,8 @@ int handle_rem_recv_with_tests() {
 			goto EXIT_ALLTOALLV;
 		}
 		test_all_requests_no_lock();
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -1669,13 +1714,17 @@ int handle_rem_recv_with_tests() {
 			goto EXIT_ALLTOALLV;
 		}
 		test_all_requests_no_lock();
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	minid = collids[0];
+	maxid = collids[0];
 	for(int i = 0; i < nC+nR; i++) {
 		if(collids[i] < minid) {
 			minid = collids[i];
+		}
+		if(collids[i] > maxid) {
+			maxid = collids[i];
 		}
 	}
 	
@@ -1684,7 +1733,9 @@ int handle_rem_recv_with_tests() {
 		if(cdata->id <= minid) cdata->id = -1;
 		cdata = cdata->next;
 	}
-
+	
+	if(maxid - minid >= 100) parep_mpi_proc_diverge = 1;
+	
 EXIT_ALLTOALLV:
 	free(allrecvids);
 	free(allsendids);
@@ -1701,6 +1752,7 @@ EXIT_ALLTOALL:
 
 int handle_rem_recv() {
 	int ret = 0;
+	int testret;
 	int myrank,cmprank=-1,reprank=-1;
 	EMPI_Comm_rank(MPI_COMM_WORLD->eworldComm,&myrank);
 	if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_rank(MPI_COMM_WORLD->EMPI_COMM_CMP,&cmprank);
@@ -1746,8 +1798,8 @@ int handle_rem_recv() {
 		if(ret != 0) {
 			goto EXIT_ALLTOALL;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
   //Identify items from sendnums that were not in recvfrommenums and resend them
 	//Identify items from recvnums that were not in senttomenums and mark them to be skipped
@@ -1790,8 +1842,8 @@ int handle_rem_recv() {
 		if(ret != 0) {
 			goto EXIT_ALLTOALLV;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -1853,8 +1905,8 @@ int handle_rem_recv() {
 		if(ret != 0) {
 			goto EXIT_ALLTOALLV;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	pdata = first_peertopeer;
 	while(pdata != NULL) {
@@ -1914,8 +1966,8 @@ int handle_rem_recv() {
 		if(ret != 0) {
 			goto EXIT_ALLTOALLV;
 		}
-		EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-	} while(ereqflag == 0);
+		testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+	} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 	
 	minid = collids[0];
 	for(int i = 0; i < nC+nR; i++) {
@@ -1955,6 +2007,7 @@ void *polling_daemon(void *arg) {
 	nfds = 1;
 	int pollret;
 	parep_mpi_polling_started = 1;
+	int proberet;
 	while(true) {
 		pollret = poll(&pfd,nfds,-1);
 		if((pollret == -1) && (errno == EINTR)) {
@@ -2276,11 +2329,13 @@ void *polling_daemon(void *arg) {
 					probe_reduce_messages();
 					
 					pthread_rwlock_rdlock(&commLock);
+					probe_msg_from_all(MPI_COMM_WORLD);
 					pthread_mutex_lock(&peertopeerLock);
 					pthread_mutex_lock(&collectiveLock);
 					//parep_mpi_wait_block = 0;
 					
 					int ret = 0;
+					int testret;
 					do {
 						ret = handle_rem_recv_with_tests();
 						if(ret != 0) continue;
@@ -2297,8 +2352,8 @@ void *polling_daemon(void *arg) {
 								}
 								break;
 							}
-							EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
-						} while(ereqflag == 0);
+							testret = EMPI_Test(&ereq,&ereqflag,EMPI_STATUS_IGNORE);
+						} while((ereqflag == 0) || (testret != EMPI_SUCCESS));
 					} while(ret != 0);
 					
 					ptpdata *pdata = first_peertopeer;
@@ -2464,6 +2519,21 @@ void *polling_daemon(void *arg) {
 					pthread_rwlock_unlock(&commLock);
 					pthread_mutex_unlock(&reqListLock);
 					PAREP_MPI_ENABLE_CKPT();
+					
+					if((!parep_mpi_swap_replicas) && (!parep_mpi_trigger_swap_scheduled) && (parep_mpi_proc_diverge)) {
+						parep_mpi_proc_diverge = 0;
+						pthread_mutex_lock(&procmaplock);
+						ctrmap = (int *)_real_malloc(sizeof(int) * nC);
+						rtcmap = (int *)_real_malloc(sizeof(int) * nR);
+						for(int i = 0; i < nC; i++) {
+							ctrmap[i] = cmpToRepMap[i];
+							if(i < nR) rtcmap[i] = repToCmpMap[i];
+						}
+						parep_mpi_swap_replicas = 1;
+						parep_mpi_trigger_swap_scheduled = 1;
+						pthread_mutex_unlock(&procmaplock);
+					}
+					
 					if(parep_mpi_trigger_swap_scheduled) {
 						parep_mpi_trigger_swap_scheduled = 0;
 						pthread_kill(thread_tid[0],SIGUSR1);
@@ -2602,16 +2672,20 @@ void *polling_daemon(void *arg) {
 									EMPI_Status stat;
 									do {
 										MPI_Comm comm = MPI_COMM_WORLD;
-										if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-										else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+										proberet = EMPI_SUCCESS;
+										if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+										else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+										if(proberet != EMPI_SUCCESS) flag = 0;
 										if(flag) {
 											pthread_rwlock_unlock(&commLock);
 											do {
 												progressed = test_all_ptp_requests();
 											} while(progressed);
 											pthread_rwlock_rdlock(&commLock);
-											if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-											else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+											proberet = EMPI_SUCCESS;
+											if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+											else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+											if(proberet != EMPI_SUCCESS) flag = 0;
 											if(flag == 0) {
 												flag = 1;
 												continue;
@@ -2689,14 +2763,18 @@ void *polling_daemon(void *arg) {
 									EMPI_Status stat;
 									do {
 										MPI_Comm comm = MPI_COMM_WORLD;
-										EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+										proberet = EMPI_SUCCESS;
+										proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+										if(proberet != EMPI_SUCCESS) flag = 0;
 										if(flag) {
 											pthread_rwlock_unlock(&commLock);
 											do {
 												progressed = test_all_requests();
 											} while(progressed);
 											pthread_rwlock_rdlock(&commLock);
-											EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+											proberet = EMPI_SUCCESS;
+											proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+											if(proberet != EMPI_SUCCESS) flag = 0;
 											if(flag == 0) {
 												flag = 1;
 												continue;
@@ -2842,14 +2920,18 @@ void *polling_daemon(void *arg) {
 									EMPI_Status stat;
 									do {
 										MPI_Comm comm = MPI_COMM_WORLD;
-										EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+										proberet = EMPI_SUCCESS;
+										proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+										if(proberet != EMPI_SUCCESS) flag = 0;
 										if(flag) {
 											pthread_rwlock_unlock(&commLock);
 											do {
 												progressed = test_all_ptp_requests();
 											} while(progressed);
 											pthread_rwlock_rdlock(&commLock);
-											EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+											proberet = EMPI_SUCCESS;
+											proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+											if(proberet != EMPI_SUCCESS) flag = 0;
 											if(flag == 0) {
 												flag = 1;
 												continue;
@@ -2928,6 +3010,9 @@ void *polling_daemon(void *arg) {
 					int nRdiff = 0;
 					int nCdiff = 0;
 					bool switching_to_cmp = false;
+					bool lost_cand = false;
+					if(myrank >= nC) lost_cand = true;
+					else if(cmpToRepMap[myrank] != -1) lost_cand = true;
 					for (int j = 0; j < num_failed_procs_current;j++) {
 						if(myrank >= nC) {
 							if (repToCmpMap[myrank-nC] == failed_ranks[j]) switching_to_cmp = true;
@@ -2973,6 +3058,12 @@ void *polling_daemon(void *arg) {
 						EMPI_Group_difference(current_group,current_failed_group,&current_alive_group);
 					}
 					
+					if(lost_cand) {
+						if(myrank >= nC) {
+							if(switching_to_cmp) replica_lost = true;
+						} else if(cmpToRepMap[myrank] == -1) replica_lost = true;
+					}
+					
 					_real_free(worldComm_ranks);
 					_real_free(rankadj);
 					_real_free(rankadjrep);
@@ -3004,7 +3095,7 @@ void *polling_daemon(void *arg) {
 					} else if(active_thread == 1) {
 						if(shrink_perf == 1) {
 							pthread_cancel(comm_shrinker);
-							pthread_join(comm_shrinker,NULL);
+							_real_pthread_join(comm_shrinker,NULL);
 							_real_pthread_create(&comm_shrinker,NULL,comm_shrink,&current_alive_group);
 							//pthread_create(&comm_shrinker,NULL,comm_shrink,&current_alive_group);
 						} else if(shrink_perf == 0) {
@@ -3014,7 +3105,7 @@ void *polling_daemon(void *arg) {
 							}
 							pthread_mutex_unlock(&thread_active_mutex);
 							memcpy(&(MPI_COMM_WORLD->eworldComm),&parep_mpi_new_comm,sizeof(EMPI_Comm));
-							pthread_join(comm_shrinker,NULL);
+							_real_pthread_join(comm_shrinker,NULL);
 							waiting_for_resp = 1;
 							_real_pthread_create(&comm_shrinker,NULL,comm_shrink,&current_alive_group);
 							//pthread_create(&comm_shrinker,NULL,comm_shrink,&current_alive_group);
@@ -3102,7 +3193,14 @@ void *polling_daemon(void *arg) {
 							MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM = EMPI_COMM_NULL;
 							EMPI_Comm_split(MPI_COMM_WORLD->eworldComm, newrank, 0, &(MPI_COMM_WORLD->pairComm));
 						}
-						pthread_join(comm_shrinker,NULL);
+						EMPI_Comm_set_errhandler(MPI_COMM_WORLD->eworldComm,EMPI_ERRORS_RETURN);
+						if(MPI_COMM_WORLD->EMPI_COMM_CMP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_COMM_CMP,EMPI_ERRORS_RETURN);
+						if(MPI_COMM_WORLD->EMPI_COMM_REP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_COMM_REP,EMPI_ERRORS_RETURN);
+						if(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_REP_INTERCOMM,EMPI_ERRORS_RETURN);
+						if(MPI_COMM_WORLD->EMPI_CMP_NO_REP != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_NO_REP,EMPI_ERRORS_RETURN);
+						if(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->EMPI_CMP_NO_REP_INTERCOMM,EMPI_ERRORS_RETURN);
+						if(MPI_COMM_WORLD->pairComm != EMPI_COMM_NULL) EMPI_Comm_set_errhandler(MPI_COMM_WORLD->pairComm,EMPI_ERRORS_RETURN);
+						_real_pthread_join(comm_shrinker,NULL);
 						printf("%d: Shrink completed newrank %d parep_mpi_rank %d new leader rank %d mean %f std %f\n",getpid(),newrank,parep_mpi_rank,parep_mpi_leader_rank,parep_mpi_pred_mean,parep_mpi_pred_std);
 						//parep_infiniband_cmd(PAREP_IB_POST_SHRINK);
 						pthread_mutex_lock(&peertopeerLock);

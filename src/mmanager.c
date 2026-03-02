@@ -17,6 +17,22 @@ void prepareHeader(CkptHeader *ckptHdr) {
 }
 */
 
+ProcessStat prstat;
+Mapping mappings[MAX_MAPPINGS];
+SockInfo sockinfo[MAX_SOCKETS];
+address base_brk;
+
+int num_socks;
+
+int num_mappings;
+int num_heapmaps;
+int num_stackmaps;
+int num_anonmaps;
+
+address actual_brk;
+address actual_stack_start;
+address actual_stack_end;
+
 extern address parep_mpi_new_stack_start;
 extern address parep_mpi_new_stack_end;
 
@@ -284,7 +300,7 @@ void parseMapsFile() {
 			}
 			mappings[num_mappings].pathname[i] = '\0';
 		}
-		parep_mpi_assert(line[idx++] == '\n');
+		parep_mpi_assert((line[idx] == '\n') || (line[idx] == 'a'));
 		
 		//int rnum =sscanf(line, "%lx-%lx %4s %lx %x:%x %d %s",&mappings[num_mappings].start, &mappings[num_mappings].end,
 		//					tempperm, &mappings[num_mappings].offset, &mappings[num_mappings].dev_major,

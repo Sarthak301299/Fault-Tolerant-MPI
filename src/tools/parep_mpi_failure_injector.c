@@ -16,7 +16,7 @@
 #include <netdb.h>
 #include <limits.h>
 
-#define MAX_FILENAME_LEN 256
+#define MAX_FILENAME_LEN 4096
 #define DYN_COORDINATOR_PORT 2582
 #define CMD_INFORM_PREDICT 30
 #define CMD_INFORM_PREDICT_NODE 34

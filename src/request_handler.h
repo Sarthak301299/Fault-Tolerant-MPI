@@ -28,10 +28,11 @@ bool test_all_requests();
 void test_all_requests_no_lock();
 
 int probe_msg_from_source(MPI_Comm, int);
+int probe_msg_from_all(MPI_Comm);
 void probe_reduce_messages();
 void probe_reduce_messages_with_comm(MPI_Comm);
 
-pthread_t request_handler;
+extern pthread_t request_handler;
 void *handling_requests(void *);
 
 #endif

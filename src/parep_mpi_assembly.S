@@ -49,3 +49,5 @@ ljmpend:
 	jmpq *%rdx
 
 	ret
+
+.section .note.GNU-stack,"",@progbits

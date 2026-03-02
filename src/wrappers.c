@@ -18,6 +18,8 @@
 #include "heap_allocator.h"
 #include "mpi.h"
 
+pthread_t waitWaker;
+
 extern int ___ckpt_counter;
 
 extern int parep_mpi_pmi_fd;
@@ -36,7 +38,8 @@ extern void parep_mpi_sigusr1_hook(int,bool,int);
 extern int num_threads;
 extern pthread_mutex_t num_thread_mutex;
 extern pthread_cond_t num_thread_cond;
-extern pthread_t thread_tid[10];
+extern pthread_t thread_tid[20];
+extern bool thrd_detached[20];
 extern bool signal_bcasted;
 
 extern int parep_mpi_size;
@@ -146,12 +149,18 @@ void *(*_real_memalign)(size_t,size_t) = NULL;
 int (*_real_posix_memalign)(void **,size_t,size_t) = NULL;
 void *(*_real_valloc)(size_t) = NULL;
 int (*_real_pthread_create)(pthread_t *restrict,const pthread_attr_t *restrict,void *(*)(void *),void *restrict) = NULL;
+int (*_real_pthread_join)(pthread_t, void **) = NULL;
+int (*_real_pthread_detach)(pthread_t) = NULL;
+void (*_real_pthread_exit)(void *) __attribute__((noreturn)) = NULL;
 
 void *(*_ext_valloc)(size_t) = NULL;
 void *(*_ext_memalign)(size_t,size_t) = NULL;
 
 int (*_real_pipe)(int pipefd[2]) = NULL;
 int (*_real_pipe2)(int pipefd[2],int flags) = NULL;
+
+int (*_real_sigaction)(int signum, const struct sigaction *__restrict act, struct sigaction *__restrict oldact) = NULL;
+sighandler_t (*_real_signal)(int signum, sighandler_t handler) = NULL;
 
 ssize_t (*_real_process_vm_readv)(pid_t pid, const struct iovec *local_iov, unsigned long liovcnt, const struct iovec *remote_iov, unsigned long riovcnt,unsigned long flags) = NULL;
 
@@ -211,6 +220,61 @@ bool parep_mpi_disable_ckpt() {
 
 void parep_mpi_enable_ckpt() {
 	pthread_rwlock_unlock(&wrapperLock);
+}
+
+void signal_handler(int signum, siginfo_t *siginfo, void *context);
+void sigsegv_handler(int signum, siginfo_t *siginfo, void *context);
+
+int sigaction(int signum, const struct sigaction *__restrict act, struct sigaction *__restrict oldact) {
+	if(_real_sigaction == NULL) _real_sigaction = dlsym(RTLD_NEXT,"sigaction");
+	if(signum == SIGSEGV) {
+		/*struct sigaction action;
+		action.sa_flags = SA_SIGINFO;
+		action.sa_sigaction = sigsegv_handler;
+		return _real_sigaction(SIGSEGV, &action, oldact);*/
+		return 0;
+	} else if(signum == SIGUSR1) {
+		/*sigset_t mask;
+		sigemptyset(&mask);
+		sigaddset(&mask, signum);
+		pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+		
+		struct sigaction action;
+		action.sa_sigaction = signal_handler;
+		action.sa_flags = SA_SIGINFO;
+		return _real_sigaction(SIGUSR1, &action, oldact);*/
+		return 0;
+	} else {
+		return _real_sigaction(signum, act, oldact);
+	}
+}
+
+sighandler_t signal(int signum, sighandler_t handler) {
+	if(_real_signal == NULL) _real_signal = dlsym(RTLD_NEXT,"signal");
+	if(signum == SIGSEGV) {
+		/*struct sigaction action;
+		struct sigaction oaction;
+		action.sa_flags = SA_SIGINFO;
+		action.sa_sigaction = sigsegv_handler;
+		_real_sigaction(SIGSEGV, &action, &oaction);
+		return oaction.sa_handler;*/
+		return SIG_DFL;
+	} else if(signum == SIGUSR1) {
+		/*sigset_t mask;
+		sigemptyset(&mask);
+		sigaddset(&mask, signum);
+		pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+		
+		struct sigaction action;
+		struct sigaction oaction;
+		action.sa_sigaction = signal_handler;
+		action.sa_flags = SA_SIGINFO;
+		_real_sigaction(SIGUSR1, &action, &oaction);
+		return oaction.sa_handler;*/
+		return SIG_DFL;
+	} else {
+		return _real_signal(signum, handler);
+	}
 }
 
 ssize_t process_vm_readv(pid_t pid, const struct iovec *local_iov, unsigned long liovcnt, const struct iovec *remote_iov, unsigned long riovcnt,unsigned long flags) {
@@ -657,11 +721,17 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 		parep_mpi_internal_call = true;
 	}
 	int tid_index;
+	int proberet;
 	int restore = false;
 	bool bcast = false;
 	bool wrlockheld = false;
 	pthread_mutex_lock(&num_thread_mutex);
 	if(!signal_bcasted) {
+		if(pthread_self() != thread_tid[0]) {
+			pthread_mutex_unlock(&num_thread_mutex);
+			pthread_kill(thread_tid[0],signum);
+			return;
+		}
 		assert(pthread_self() == thread_tid[0]);
 		if(parep_mpi_sighandling_state == 1) {
 			parep_mpi_sighandling_state = 2;
@@ -721,16 +791,20 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 						EMPI_Status stat;
 						do {
 							MPI_Comm comm = MPI_COMM_WORLD;
-							if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-							else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+							proberet = EMPI_SUCCESS;
+							if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+							else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+							if(proberet != EMPI_SUCCESS) flag = 0;
 							if(flag) {
 								pthread_rwlock_unlock(&commLock);
 								do {
 									progressed = test_all_ptp_requests();
 								} while(progressed);
 								pthread_rwlock_rdlock(&commLock);
-								if(j < nC) EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
-								else EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+								proberet = EMPI_SUCCESS;
+								if(j < nC) proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_CMP_REP_INTERCOMM,&flag,&stat);
+								else proberet = EMPI_Iprobe(j-nC,EMPI_ANY_TAG,comm->EMPI_COMM_REP,&flag,&stat);
+								if(proberet != EMPI_SUCCESS) flag = 0;
 								if(flag == 0) {
 									flag = 1;
 									continue;
@@ -805,14 +879,18 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 						EMPI_Status stat;
 						do {
 							MPI_Comm comm = MPI_COMM_WORLD;
-							EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+							proberet = EMPI_SUCCESS;
+							proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+							if(proberet != EMPI_SUCCESS) flag = 0;
 							if(flag) {
 								pthread_rwlock_unlock(&commLock);
 								do {
 									progressed = test_all_ptp_requests();
 								} while(progressed);
 								pthread_rwlock_rdlock(&commLock);
-								EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+								proberet = EMPI_SUCCESS;
+								proberet = EMPI_Iprobe(j,EMPI_ANY_TAG,comm->EMPI_COMM_CMP,&flag,&stat);
+								if(proberet != EMPI_SUCCESS) flag = 0;
 								if(flag == 0) {
 									flag = 1;
 									continue;
@@ -886,6 +964,7 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 			
 			do {
 				ret = 0;
+				int testret;
 				EMPI_Ibarrier(MPI_COMM_WORLD->eworldComm,&req);
 				int flag = 0;
 				do {
@@ -907,8 +986,8 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 						ret = 1;
 						break;
 					}
-					EMPI_Test(&req,&flag,EMPI_STATUS_IGNORE);
-				} while(flag == 0);
+					testret = EMPI_Test(&req,&flag,EMPI_STATUS_IGNORE);
+				} while((flag == 0) || (testret != EMPI_SUCCESS));
 			} while(ret == 1);
 			
 			pthread_mutex_lock(&peertopeerLock);
@@ -922,6 +1001,7 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 			
 			do {
 				ret = 0;
+				int testret;
 				EMPI_Ibarrier(MPI_COMM_WORLD->eworldComm,&req);
 				int flag = 0;
 				do {
@@ -943,8 +1023,8 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 						ret = 1;
 						break;
 					}
-					EMPI_Test(&req,&flag,EMPI_STATUS_IGNORE);
-				} while(flag == 0);
+					testret = EMPI_Test(&req,&flag,EMPI_STATUS_IGNORE);
+				} while((flag == 0) || (testret != EMPI_SUCCESS));
 			} while(ret == 1);
 			
 			pthread_mutex_lock(&peertopeerLock);
@@ -1111,7 +1191,15 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 		pthread_rwlock_wrlock(&wrapperLock);
 		wrlockheld = true;
 	}
-	pthread_mutex_unlock(&num_thread_mutex);
+	
+	bool detached_threads = false;
+	do {
+		detached_threads = false;
+		for(int i = 0; i < num_threads; i++) {
+			if(thrd_detached[i]) detached_threads = true;
+		}
+		if(detached_threads) pthread_cond_wait(&num_thread_cond, &num_thread_mutex);
+	} while(detached_threads);
 	
 	for(int i = 0; i < num_threads; i++) {
 		if(pthread_self() != thread_tid[i]) {
@@ -1122,6 +1210,8 @@ void signal_handler(int signum, siginfo_t *siginfo, void *context) {
 			tid_index = i;
 		}
 	}
+	
+	pthread_mutex_unlock(&num_thread_mutex);
 	
 	restore = parep_mpi_restore;
 	
@@ -1229,6 +1319,8 @@ void sigsegv_handler(int signum, siginfo_t *siginfo, void *context) {
 }
 
 void set_signal_handler(int signal) {
+	if(_real_sigaction == NULL) _real_sigaction = dlsym(RTLD_NEXT,"sigaction");
+	if(_real_signal == NULL) _real_signal = dlsym(RTLD_NEXT,"signal");
 	sigset_t mask;
 	sigemptyset(&mask);
 	sigaddset(&mask, signal);
@@ -1237,10 +1329,10 @@ void set_signal_handler(int signal) {
 	struct sigaction action;
 	action.sa_sigaction = signal_handler;
 	action.sa_flags = SA_SIGINFO;
-	sigaction(signal, &action, NULL);
+	_real_sigaction(signal, &action, NULL);
 	
 	action.sa_sigaction = sigsegv_handler;
-	sigaction(SIGSEGV, &action, NULL);
+	_real_sigaction(SIGSEGV, &action, NULL);
 }
 
 void *start_routine_intercept(void *argument) {
@@ -1248,25 +1340,121 @@ void *start_routine_intercept(void *argument) {
 	pthread_mutex_lock(&num_thread_mutex);
 	tid_index = num_threads;
 	num_threads++;
-	pthread_mutex_unlock(&num_thread_mutex);
 	thread_tid[tid_index] = pthread_self();
+	thrd_detached[tid_index] = false;
+	pthread_cond_signal(&num_thread_cond);
+	pthread_mutex_unlock(&num_thread_mutex);
 	pcin_arg_t *args = (pcin_arg_t *)argument;
 	void *(*real_start_routine)(void *) = args->start_routine;
 	void *restrict real_arg = args->arg;
 	free(args);
 	set_signal_handler(SIGUSR1);
-	return real_start_routine(real_arg);
+	void *ret = real_start_routine(real_arg);
+	pthread_mutex_lock(&num_thread_mutex);
+	bool dtchd = false;
+	do {
+		for(int i = 0; i < num_threads; i++) {
+			if(thread_tid[i] == pthread_self()) {
+				if(thrd_detached[i]) {
+					dtchd = true;
+					for(int j = i; j < num_threads-1; j++) {
+						thread_tid[j] = thread_tid[j+1];
+						thrd_detached[j] = thrd_detached[j+1];
+					}
+					num_threads--;
+					pthread_cond_signal(&num_thread_cond);
+				}
+				break;
+			}
+		}
+		if(!dtchd) pthread_cond_wait(&num_thread_cond, &num_thread_mutex);
+	} while(!dtchd);
+	pthread_mutex_unlock(&num_thread_mutex);
+	return ret;
 }
 
 int pthread_create(pthread_t *restrict thread, const pthread_attr_t *restrict attr, void *(*start_routine)(void *), void *restrict arg) {
 	int retval;
 	if(_real_pthread_create == NULL) _real_pthread_create = dlsym(RTLD_NEXT,"pthread_create");
 	if(_real_malloc == NULL) _real_malloc = dlsym(RTLD_NEXT,"malloc");
+	if(_real_free == NULL) _real_free = dlsym(RTLD_NEXT,"free");
+	if(_real_pthread_join == NULL) _real_pthread_join = dlsym(RTLD_NEXT,"pthread_join");
+	if(_real_pthread_detach == NULL) _real_pthread_detach = dlsym(RTLD_NEXT,"pthread_detach");
+	if(_real_pthread_exit == NULL) _real_pthread_exit = dlsym(RTLD_NEXT,"pthread_exit");
 	pcin_arg_t *args_intercept = _real_malloc(sizeof(pcin_arg_t));
 	args_intercept->start_routine = start_routine;
 	args_intercept->arg = arg;
 	retval = _real_pthread_create(thread,attr,start_routine_intercept,args_intercept);
 	return retval;
+}
+
+int pthread_join(pthread_t thread, void **retVal) {
+	int retval;
+	if(_real_pthread_join == NULL) _real_pthread_join = dlsym(RTLD_NEXT,"pthread_join");
+	if(_real_free == NULL) _real_free = dlsym(RTLD_NEXT,"free");
+	pthread_mutex_lock(&num_thread_mutex);
+	bool found = false;
+	do {
+		for(int i = 0; i < num_threads; i++) {
+			if(thread_tid[i] == thread) {
+				found = true;
+				thrd_detached[i] = true;
+				pthread_cond_signal(&num_thread_cond);
+				break;
+			}
+		}
+		if(!found) pthread_cond_wait(&num_thread_cond, &num_thread_mutex);
+	} while(!found);
+	pthread_mutex_unlock(&num_thread_mutex);
+	int ret = _real_pthread_join(thread,retVal);
+	return ret;
+}
+
+int pthread_detach(pthread_t thread) {
+	int retval;
+	if(_real_pthread_detach == NULL) _real_pthread_detach = dlsym(RTLD_NEXT,"pthread_detach");
+	retval = _real_pthread_detach(thread);
+	pthread_mutex_lock(&num_thread_mutex);
+	bool found = false;
+	do {
+		for(int i = 0; i < num_threads; i++) {
+			if(thread_tid[i] == thread) {
+				found = true;
+				thrd_detached[i] = true;
+				pthread_cond_signal(&num_thread_cond);
+				break;
+			}
+		}
+		if(!found) pthread_cond_wait(&num_thread_cond, &num_thread_mutex);
+	} while(!found);
+	pthread_mutex_unlock(&num_thread_mutex);
+	return retval;
+}
+
+[[noreturn]] void pthread_exit(void *retVal) {
+	int ret;
+	if(_real_pthread_exit == NULL) _real_pthread_exit = dlsym(RTLD_NEXT,"pthread_exit");
+	pthread_mutex_lock(&num_thread_mutex);
+	bool dtchd = false;
+	do {
+		for(int i = 0; i < num_threads; i++) {
+			if(thread_tid[i] == pthread_self()) {
+				if(thrd_detached[i]) {
+					dtchd = true;
+					for(int j = i; j < num_threads-1; j++) {
+						thread_tid[j] = thread_tid[j+1];
+						thrd_detached[j] = thrd_detached[j+1];
+					}
+					num_threads--;
+					pthread_cond_signal(&num_thread_cond);
+				}
+				break;
+			}
+		}
+		if(!dtchd) pthread_cond_wait(&num_thread_cond, &num_thread_mutex);
+	} while(!dtchd);
+	pthread_mutex_unlock(&num_thread_mutex);
+	_real_pthread_exit(retVal);
 }
 
 /*int dlclose(void *handle)

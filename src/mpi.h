@@ -114,6 +114,9 @@ int MPI_Info_create(MPI_Info *);
 int MPI_Type_size(MPI_Datatype, int *);
 int MPI_Type_get_extent(MPI_Datatype, MPI_Aint *, MPI_Aint *);
 
+int MPI_Pack(const void *, int, MPI_Datatype, void *, int, int *, MPI_Comm);
+int MPI_Unpack(const void *, int, int *, void *, int, MPI_Datatype, MPI_Comm);
+
 int MPI_Abort(MPI_Comm, int);
 
 int MPI_Checkpoint_start();
