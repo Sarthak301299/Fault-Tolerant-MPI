@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
 		}
 
 		//Option may have a separate value
-		if (i + 1 < argc && argv[i + 1][0] != '-') {
+		if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '\') {
 			i += 2;      //consume option and value
 		} else {
 			i += 1;      //flag with no value
